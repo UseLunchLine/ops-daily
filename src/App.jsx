@@ -10,8 +10,8 @@ const SM=Object.fromEntries(STATS.map(s=>[s.id,s]))
 const ISS=[{id:"food_out",label:"Ran out of food"},{id:"low_food",label:"Low food supply"},{id:"staffing",label:"Staffing issue"},{id:"equip",label:"Equipment issue"},{id:"delivery",label:"Delivery problem"},{id:"health",label:"Health/Safety"},{id:"power",label:"Power/Utilities"},{id:"behavior",label:"Student behavior"},{id:"pest",label:"Pest/Sanitation"},{id:"weather",label:"Weather-related"}]
 const RC={admin:{bg:"#EDE7F6",t:"#4527A0"},supervisor:{bg:"#E1F5FE",t:"#01579B"},director:{bg:"#E8EAF6",t:"#283593"},chef:{bg:"#FFF3E0",t:"#E65100"}}
 const CTB={calloff:{bg:"#E3F2FD",tx:"#1565C0",label:"Call-Off"},sick:{bg:"#FFFDE7",tx:"#F57F17",label:"Sick Day"},ncns:{bg:"#FFEBEE",tx:"#C62828",label:"No Call No Show"}}
-const DIR_ROLES=[{id:"all",label:"All",color:"#546E7A",bg:"#ECEFF1"},{id:"manager",label:"Managers",color:"#1565C0",bg:"#E3F2FD"},{id:"chef",label:"Chefs",color:"#E65100",bg:"#FFF3E0"},{id:"director",label:"Directors",color:"#6A1B9A",bg:"#F3E5F5"},{id:"asst_dir",label:"Asst. Directors",color:"#006064",bg:"#E0F7FA"},{id:"supervisor",label:"Op Supervisors",color:"#1B5E20",bg:"#E8F5E9"},{id:"csa",label:"CSAs",color:"#4E342E",bg:"#EFEBE9"},{id:"ppa",label:"PPAs",color:"#283593",bg:"#E8EAF6"}]
-const EMPTY_ENTRY={name:"",position:"",role_type:"manager",school_ids:[],phone:"",email:"",is_active:true}
+const DIR_ROLES=[{id:"all",label:"All",color:"#546E7A",bg:"#ECEFF1"},{id:"manager",label:"Managers",color:"#1565C0",bg:"#E3F2FD"},{id:"chef",label:"Chefs",color:"#E65100",bg:"#FFF3E0"},{id:"director",label:"Directors",color:"#6A1B9A",bg:"#F3E5F5"},{id:"asst_dir",label:"Asst. Directors",color:"#006064",bg:"#E0F7FA"},{id:"supervisor",label:"Op Supervisors",color:"#1B5E20",bg:"#E8F5E9"},{id:"csa",label:"CSAs",color:"#4E342E",bg:"#EFEBE9"},{id:"ppa",label:"PPAs",color:"#283593",bg:"#E8EAF6"},{id:"temp",label:"Temp Staff",color:"#7B1FA2",bg:"#F3E5F5"}]
+const EMPTY_ENTRY={name:"",position:"",role_type:"manager",school_ids:[],phone:"",email:"",is_active:true,is_temp:false,temp_end_date:""}
 const TODAY=new Date().toISOString().slice(0,10)
 const uid=()=>Math.random().toString(36).slice(2,8)
 const fd=d=>new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
@@ -132,6 +132,7 @@ export default function App(){
   const [recaps,setRecaps]=useState(SR)
   const [calloffs,setCalloffs]=useState(SC)
   const [directory,setDirectory]=useState(SD)
+  const [supaUsers,setSupaUsers]=useState([])
   const [dbReady,setDbReady]=useState(false)
   const [user,setUser]=useState(null)
   const [authLoading,setAuthLoading]=useState(true)
@@ -150,14 +151,16 @@ export default function App(){
 
   useEffect(()=>{
     async function loadData(){
-      const [r,co,d]=await Promise.all([
+      const [r,co,d,su]=await Promise.all([
         supabase.from("recaps").select("*").order("created_at",{ascending:false}),
         supabase.from("calloffs").select("*").order("created_at",{ascending:false}),
-        supabase.from("directory").select("*").order("name")
+        supabase.from("directory").select("*").order("name"),
+        supabase.from("app_users").select("*").order("name")
       ])
       if(r.data&&r.data.length>0)setRecaps(r.data)
       if(co.data&&co.data.length>0)setCalloffs(co.data)
       if(d.data&&d.data.length>0)setDirectory(d.data)
+      if(su.data)setSupaUsers(su.data)
       setDbReady(true)
     }
     loadData()
@@ -173,7 +176,7 @@ export default function App(){
   if(!user)return <Login/>
   const perms={submit:true,report:user.role!=="chef",calloffs:user.role!=="chef",directory:true,admin:user.role==="admin"}
   const sById=id=>schools.find(s=>s.id===id)
-  const uById=id=>users.find(u=>u.id===id)
+  const uById=id=>users.find(u=>u.id===id)||supaUsers.find(u=>u.id===id)||{name:"--"}
   const go=(pg,c=null)=>{setPage(pg);if(c)setCtx(c)}
 
   const navItems=[
@@ -186,7 +189,7 @@ export default function App(){
     ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
   ]
 
-  const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,go,sById,uById,ctx,isAdmin:perms.admin}
+  const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,go,sById,uById,ctx,isAdmin:perms.admin}
 
   const PageEl=()=>{
     if(page==="dashboard")return <DashPage {...props}/>
@@ -851,7 +854,7 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
     else{const updated={...form,id:modal.id,name:form.name.trim()};setDirectory(p=>p.map(e=>e.id===modal.id?updated:e));await supabase.from("directory").update(updated).eq("id",modal.id);toast.show("Staff member updated!")}
     setModal(null)
   }
-  const del=async e=>{if(window.confirm("Remove "+e.name+"?")){setDirectory(p=>p.filter(x=>x.id!==e.id));await supabase.from("directory").delete().eq("id",e.id);toast.show(e.name+" removed.")}}
+  const del=async e=>{if(window.confirm("Remove "+e.name+"?")){const{error}=await supabase.from("directory").delete().eq("id",e.id);if(error){toast.show("Could not delete: "+error.message,"error");return}setDirectory(p=>p.filter(x=>x.id!==e.id));toast.show(e.name+" removed.")}}
   const roleMeta=id=>DIR_ROLES.find(r=>r.id===id)||{label:"Staff",color:C.textMuted,bg:C.bg}
   const toggleSchool=(sid)=>{const ids=form.school_ids||[];setForm(f=>({...f,school_ids:ids.includes(sid)?ids.filter(x=>x!==sid):[...ids,sid]}))}
   const getSchoolNames=e=>{const ids=e.school_ids||[];if(!ids.length)return null;if(ids.length===1)return sById(ids[0])?.name||"--";return ids.length+" schools"}
@@ -959,6 +962,11 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
               <div><L>Phone</L><Inp value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="(574) 555-0100"/></div>
               <div><L>Email</L><Inp type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="name@sbcsc.edu"/></div>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                <input type="checkbox" checked={form.is_temp||false} onChange={e=>setForm(f=>({...f,is_temp:e.target.checked}))} style={{width:15,height:15,accentColor:"#7B1FA2"}}/>
+                <span style={{fontSize:13,fontWeight:600,color:C.text}}>Temporary Staff Member</span>
+              </label>
+              {form.is_temp&&<div><L>End Date</L><input type="date" value={form.temp_end_date||""} onChange={e=>setForm(f=>({...f,temp_end_date:e.target.value}))} style={{...inp,width:"auto"}}/></div>}
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
                 <input type="checkbox" checked={form.is_active} onChange={e=>setForm(f=>({...f,is_active:e.target.checked}))} style={{width:15,height:15,accentColor:"#2563EB"}}/>
                 <span style={{fontSize:13,fontWeight:600,color:C.text}}>Active staff member</span>
               </label>
@@ -974,11 +982,11 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
   )
 }
 
-function AdminPage({schools,setSchools,users,toast}){
+function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
   const [tab,setTab]=useState("users")
   const [es,setEs]=useState(null)
+  const [assignSearch,setAssignSearch]=useState("")
   const [af,setAf]=useState({chef_id:"",director_id:"",supervisor_id:""})
-  const [supaUsers,setSupaUsers]=useState([])
   const [userModal,setUserModal]=useState(null)
   const [userForm,setUserForm]=useState({name:"",email:"",password:"",role:"chef",phone:"",school_ids:[],is_active:true})
   const [userLoading,setUserLoading]=useState(false)
@@ -992,6 +1000,7 @@ function AdminPage({schools,setSchools,users,toast}){
     const {data}=await supabase.from("app_users").select("*").order("name")
     if(data)setSupaUsers(data)
   }
+
 
   const openAddUser=()=>{
     setUserForm({name:"",email:"",password:"",role:"chef",phone:"",school_ids:[],is_active:true})
@@ -1108,31 +1117,36 @@ function AdminPage({schools,setSchools,users,toast}){
           </table>
         </Box>
       </div>}
-      {tab==="assign"&&!es&&<Box style={{padding:0,overflow:"hidden"}}>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:580}}>
-            <thead><tr style={{background:"#F8FAFC",borderBottom:"2px solid #E2E8F0"}}>{["School","Type","Chef","Director","Supervisor","Edit"].map(h=><th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase",letterSpacing:".06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
-            <tbody>{schools.map(s=>{const tc=TC[s.type];return(
-              <tr key={s.id} style={{borderBottom:"1px solid #F1F5F9"}}>
-                <td style={{padding:"10px 14px",fontWeight:700,whiteSpace:"nowrap",color:C.text}}>{s.name}</td>
-                <td style={{padding:"10px 14px"}}>{tc&&<Pill bg={tc.bg} tx={tc.tx} bd={tc.bd}>{TL[s.type]}</Pill>}</td>
-                {["chef","director","supervisor"].map(r=><td key={r} style={{padding:"10px 14px",whiteSpace:"nowrap"}}>{s[r+"_id"]?<span style={{fontWeight:600,color:C.text}}>{uB(s[r+"_id"])?.name||"--"}</span>:<em style={{color:C.textLight,fontWeight:400,fontSize:12}}>Unassigned</em>}</td>)}
-                <td style={{padding:"10px 14px"}}><button onClick={()=>{setAf({chef_id:s.chef_id||"",director_id:s.director_id||"",supervisor_id:s.supervisor_id||""});setEs(s)}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.primary,display:"flex",padding:7}}><Edit2 size={13}/></button></td>
-              </tr>
-            )})}</tbody>
-          </table>
-        </div>
-      </Box>}
-      {tab==="assign"&&es&&<Box style={{maxWidth:420}}>
-        <h3 style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:18}}>Assign Staff - {es.name}</h3>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {[{r:"chef",l:"Chef Manager",f:"chef_id"},{r:"director",l:"Director",f:"director_id"},{r:"supervisor",l:"Supervisor",f:"supervisor_id"}].map(({r,l,f})=><div key={r}><L>{l}</L><Sel value={af[f]} onChange={e=>setAf(p=>({...p,[f]:e.target.value}))}><option value="">-- Unassigned --</option>{byRole(r).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</Sel></div>)}
-          <div style={{display:"flex",gap:10,marginTop:4}}>
-            <Btn onClick={()=>setEs(null)} variant="outline">Cancel</Btn>
-            <Btn onClick={save}>Save Assignment</Btn>
+      {tab==="assign"&&<div>
+        <Box style={{marginBottom:14,padding:"10px 14px"}}>
+          <Inp value={assignSearch||""} onChange={e=>setAssignSearch(e.target.value)} placeholder="Search by school name or staff name..."/>
+        </Box>
+        {!es&&<Box style={{padding:0,overflow:"hidden"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:580}}>
+              <thead><tr style={{background:"#F8FAFC",borderBottom:"2px solid #E2E8F0"}}>{["School","Type","Chef","Director","Supervisor","Edit"].map(h=><th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase",letterSpacing:".06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+              <tbody>{schools.filter(s=>!assignSearch||s.name.toLowerCase().includes(assignSearch.toLowerCase())||(s.chef_id&&(uB(s.chef_id)?.name||"").toLowerCase().includes(assignSearch.toLowerCase()))||(s.director_id&&(uB(s.director_id)?.name||"").toLowerCase().includes(assignSearch.toLowerCase()))||(s.supervisor_id&&(uB(s.supervisor_id)?.name||"").toLowerCase().includes(assignSearch.toLowerCase()))).map(s=>{const tc=TC[s.type];return(
+                <tr key={s.id} style={{borderBottom:"1px solid #F1F5F9"}}>
+                  <td style={{padding:"10px 14px",fontWeight:700,whiteSpace:"nowrap",color:C.text}}>{s.name}</td>
+                  <td style={{padding:"10px 14px"}}>{tc&&<Pill bg={tc.bg} tx={tc.tx} bd={tc.bd}>{TL[s.type]}</Pill>}</td>
+                  {["chef","director","supervisor"].map(r=><td key={r} style={{padding:"10px 14px",whiteSpace:"nowrap"}}>{s[r+"_id"]?<span style={{fontWeight:600,color:C.text}}>{uB(s[r+"_id"])?.name||supaUsers.find(u=>u.id===s[r+"_id"])?.name||"--"}</span>:<em style={{color:C.textLight,fontWeight:400,fontSize:12}}>Unassigned</em>}</td>)}
+                  <td style={{padding:"10px 14px"}}><button onClick={()=>{setAf({chef_id:s.chef_id||"",director_id:s.director_id||"",supervisor_id:s.supervisor_id||""});setEs(s)}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.primary,display:"flex",padding:7}}><Edit2 size={13}/></button></td>
+                </tr>
+              )})}</tbody>
+            </table>
           </div>
-        </div>
-      </Box>}
+        </Box>}
+        {es&&<Box style={{maxWidth:420}}>
+          <h3 style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:18}}>Assign Staff - {es.name}</h3>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {[{r:"chef",l:"Chef Manager",f:"chef_id"},{r:"director",l:"Director",f:"director_id"},{r:"supervisor",l:"Supervisor",f:"supervisor_id"}].map(({r,l,f})=><div key={r}><L>{l}</L><Sel value={af[f]} onChange={e=>setAf(p=>({...p,[f]:e.target.value}))}><option value="">-- Unassigned --</option>{[...byRole(r),...supaUsers.filter(u=>u.role===r&&u.is_active)].filter((u,i,a)=>a.findIndex(x=>x.id===u.id)===i).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</Sel></div>)}
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <Btn onClick={()=>setEs(null)} variant="outline">Cancel</Btn>
+              <Btn onClick={save}>Save Assignment</Btn>
+            </div>
+          </div>
+        </Box>}
+      </div>}
     </div>
   )
 }
