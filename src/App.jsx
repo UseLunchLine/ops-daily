@@ -132,6 +132,22 @@ export default function App(){
   const [recaps,setRecaps]=useState(SR)
   const [calloffs,setCalloffs]=useState(SC)
   const [directory,setDirectory]=useState(SD)
+  const [dbReady,setDbReady]=useState(false)
+
+  useEffect(()=>{
+    async function loadData(){
+      const [r,c,d]=await Promise.all([
+        supabase.from("recaps").select("*").order("created_at",{ascending:false}),
+        supabase.from("calloffs").select("*").order("created_at",{ascending:false}),
+        supabase.from("directory").select("*").order("name")
+      ])
+      if(r.data&&r.data.length>0)setRecaps(r.data)
+      if(c.data&&c.data.length>0)setCalloffs(c.data)
+      if(d.data&&d.data.length>0)setDirectory(d.data)
+      setDbReady(true)
+    }
+    loadData()
+  },[])
   const [user,setUser]=useState(null)
   const [page,setPage]=useState("dashboard")
   const [ctx,setCtx]=useState(null)
@@ -298,8 +314,9 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast}){
   const goodShown=filtered.filter(r=>r.status==="green").length
   const issueShown=filtered.filter(r=>r.status==="red"||r.status==="yellow").length
 
-  const handleResolve=(rid,note)=>{
-    setRecaps(p=>p.map(x=>x.id===rid?{...x,resolved:true,resolution_note:note,resolved_at:new Date().toISOString()}:x))
+  const handleResolve=async(rid,note)=>{
+    setRecaps(p=>p.map(x=>x.id===rid?{...x,resolved:true,resolution_note:note}:x))
+    await supabase.from("recaps").update({resolved:true,resolution_note:note}).eq("id",rid)
     toast.show("Issue marked as resolved!")
   }
 
@@ -461,11 +478,13 @@ function SubmitPage({user,schools,setRecaps,toast}){
     setAiLoading(false)
   }
 
-  const sub=()=>{
+  const sub=async()=>{
     if(!sid){setErr("Please select a school.");return}
     if(!status){setErr("Please select a status.");return}
     setErr("")
-    setRecaps(p=>[{id:uid(),date,school_id:sid,status,issues:sel,custom_issues:cust,note:note.trim()||null,created_by:user.id,created_at:new Date().toISOString(),resolved:false,resolution_note:""},...p])
+    const newRecap={id:uid(),date,school_id:sid,status,issues:sel,custom_issues:cust,note:note.trim()||null,created_by:user.id,created_at:new Date().toISOString(),resolved:false,resolution_note:""}
+    setRecaps(p=>[newRecap,...p])
+    await supabase.from("recaps").insert(newRecap)
     setSid("");setStatus("");setSel([]);setCust([]);setCi("");setNote("");setDate(TODAY)
     toast.show("Recap submitted successfully!")
   }
@@ -650,11 +669,13 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
   const [fT,setFT]=useState("")
   const sById=id=>schools.find(s=>s.id===id)
 
-  const sub=()=>{
+  const sub=async()=>{
     if(!form.school_id){setErr("Select a school.");return}
     if(!form.staff_name.trim()){setErr("Enter staff name.");return}
     setErr("")
-    setCalloffs(p=>[{id:uid(),...form,staff_name:form.staff_name.trim(),created_by:user.id,created_at:new Date().toISOString()},...p])
+    const newCalloff={id:uid(),...form,staff_name:form.staff_name.trim(),created_by:user.id,created_at:new Date().toISOString()}
+    setCalloffs(p=>[newCalloff,...p])
+    await supabase.from("calloffs").insert(newCalloff)
     setForm({school_id:"",staff_name:"",staff_role:"",type:"calloff",note:"",date:TODAY})
     toast.show("Call-off logged successfully!")
   }
@@ -817,13 +838,13 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
   const filtered=directory.filter(e=>tab==="all"||e.role_type===tab).filter(e=>!search||e.name.toLowerCase().includes(search.toLowerCase())||e.position.toLowerCase().includes(search.toLowerCase())||((e.school_ids||[]).some(id=>(sById(id)?.name||"").toLowerCase().includes(search.toLowerCase())))).sort((a,b)=>a.name.localeCompare(b.name))
   const openAdd=()=>{setForm({...EMPTY_ENTRY,school_ids:[]});setModal("add")}
   const openEdit=e=>{setForm({...e,school_ids:e.school_ids||[]});setModal(e)}
-  const save=()=>{
+  const save=async()=>{
     if(!form.name.trim())return
-    if(modal==="add"){setDirectory(p=>[...p,{...form,id:uid(),name:form.name.trim()}]);toast.show("Staff member added!")}
-    else{setDirectory(p=>p.map(e=>e.id===modal.id?{...form,id:e.id,name:form.name.trim()}:e));toast.show("Staff member updated!")}
+    if(modal==="add"){const newEntry={...form,id:uid(),name:form.name.trim()};setDirectory(p=>[...p,newEntry]);await supabase.from("directory").insert(newEntry);toast.show("Staff member added!")}
+    else{const updated={...form,id:modal.id,name:form.name.trim()};setDirectory(p=>p.map(e=>e.id===modal.id?updated:e));await supabase.from("directory").update(updated).eq("id",modal.id);toast.show("Staff member updated!")}
     setModal(null)
   }
-  const del=e=>{if(window.confirm("Remove "+e.name+"?")){setDirectory(p=>p.filter(x=>x.id!==e.id));toast.show(e.name+" removed.")}}
+  const del=async e=>{if(window.confirm("Remove "+e.name+"?")){setDirectory(p=>p.filter(x=>x.id!==e.id));await supabase.from("directory").delete().eq("id",e.id);toast.show(e.name+" removed.")}}
   const roleMeta=id=>DIR_ROLES.find(r=>r.id===id)||{label:"Staff",color:C.textMuted,bg:C.bg}
   const toggleSchool=(sid)=>{const ids=form.school_ids||[];setForm(f=>({...f,school_ids:ids.includes(sid)?ids.filter(x=>x!==sid):[...ids,sid]}))}
   const getSchoolNames=e=>{const ids=e.school_ids||[];if(!ids.length)return null;if(ids.length===1)return sById(ids[0])?.name||"--";return ids.length+" schools"}
