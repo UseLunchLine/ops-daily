@@ -1002,18 +1002,19 @@ function AdminPage({schools,setSchools,users,toast}){
   const saveUser=async()=>{
     if(!userForm.name.trim()||!userForm.email.trim()){setUserErr("Name and email are required.");return}
     if(userModal==="add"&&!userForm.password.trim()){setUserErr("Password is required.");return}
+    if(userModal==="add"&&userForm.password.length<6){setUserErr("Password must be at least 6 characters.");return}
     setUserLoading(true);setUserErr("")
     try{
       if(userModal==="add"){
-        const {data,error}=await supabase.auth.admin.createUser({
+        const {data,error}=await supabase.auth.signUp({
           email:userForm.email,
           password:userForm.password,
-          email_confirm:true,
-          user_metadata:{name:userForm.name,role:userForm.role,phone:userForm.phone}
         })
         if(error)throw error
-        await supabase.from("app_users").insert({id:data.user.id,name:userForm.name,email:userForm.email,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:true})
-        toast.show("User created successfully!")
+        const userId=data.user?.id
+        if(!userId)throw new Error("Could not create user")
+        await supabase.from("app_users").insert({id:userId,name:userForm.name,email:userForm.email,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:true})
+        toast.show("User created! They will receive a confirmation email.")
       } else {
         await supabase.from("app_users").update({name:userForm.name,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:userForm.is_active}).eq("id",userModal.id)
         toast.show("User updated!")
