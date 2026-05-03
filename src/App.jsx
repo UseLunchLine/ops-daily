@@ -133,22 +133,35 @@ export default function App(){
   const [calloffs,setCalloffs]=useState(SC)
   const [directory,setDirectory]=useState(SD)
   const [dbReady,setDbReady]=useState(false)
+  const [user,setUser]=useState(null)
+  const [authLoading,setAuthLoading]=useState(true)
+
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>{
+      if(session?.user)setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true})
+      setAuthLoading(false)
+    })
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      if(session?.user)setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true})
+      else setUser(null)
+    })
+    return()=>subscription.unsubscribe()
+  },[])
 
   useEffect(()=>{
     async function loadData(){
-      const [r,c,d]=await Promise.all([
+      const [r,co,d]=await Promise.all([
         supabase.from("recaps").select("*").order("created_at",{ascending:false}),
         supabase.from("calloffs").select("*").order("created_at",{ascending:false}),
         supabase.from("directory").select("*").order("name")
       ])
       if(r.data&&r.data.length>0)setRecaps(r.data)
-      if(c.data&&c.data.length>0)setCalloffs(c.data)
+      if(co.data&&co.data.length>0)setCalloffs(co.data)
       if(d.data&&d.data.length>0)setDirectory(d.data)
       setDbReady(true)
     }
     loadData()
   },[])
-  const [user,setUser]=useState(null)
   const [page,setPage]=useState("dashboard")
   const [ctx,setCtx]=useState(null)
   const [sideOpen,setSideOpen]=useState(false)
@@ -156,7 +169,8 @@ export default function App(){
   const toast=useToast()
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
-  if(!user)return <Login users={users} onLogin={u=>{setUser(u);setPage("dashboard")}}/>
+  if(authLoading)return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",fontSize:16,color:"#64748B",gap:12}}><div>Loading...</div></div>
+  if(!user)return <Login/>
   const perms={submit:true,report:user.role!=="chef",calloffs:user.role!=="chef",directory:true,admin:user.role==="admin"}
   const sById=id=>schools.find(s=>s.id===id)
   const uById=id=>users.find(u=>u.id===id)
@@ -195,7 +209,7 @@ export default function App(){
             <div style={{width:32,height:32,borderRadius:10,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontWeight:900,fontSize:14}}>O</span></div>
             <span style={{color:C.text,fontWeight:800,fontSize:16}}>Ops Daily</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={()=>setUser(null)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:8}}><LogOut size={15}/></button></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={async()=>{await supabase.auth.signOut()}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:8}}><LogOut size={15}/></button></div>
         </div>
         <div style={{padding:16}}><PageEl/></div>
         <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,overflowX:"auto",boxShadow:"0 -2px 8px rgba(0,0,0,.06)"}}>
@@ -234,7 +248,7 @@ export default function App(){
             <div style={{color:C.text,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
             <div style={{marginTop:3}}><RP role={user.role}/></div>
           </div>}
-          <button onClick={()=>setUser(null)} title={!sideOpen?"Sign Out":undefined} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:sideOpen?"flex-start":"center",gap:10,padding:"9px 10px",background:"transparent",border:"none",color:C.textMuted,cursor:"pointer",borderRadius:R.md,fontSize:13,fontWeight:500,fontFamily:"inherit"}}>
+          <button onClick={async()=>{await supabase.auth.signOut()}} title={!sideOpen?"Sign Out":undefined} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:sideOpen?"flex-start":"center",gap:10,padding:"9px 10px",background:"transparent",border:"none",color:C.textMuted,cursor:"pointer",borderRadius:R.md,fontSize:13,fontWeight:500,fontFamily:"inherit"}}>
             <LogOut size={16}/>{sideOpen&&"Sign Out"}
           </button>
         </div>
@@ -244,12 +258,18 @@ export default function App(){
   )
 }
 
-function Login({users,onLogin}){
+function Login(){
   const [email,setEmail]=useState("")
   const [pw,setPw]=useState("")
   const [show,setShow]=useState(false)
   const [err,setErr]=useState("")
-  const try_=(e,p)=>{const u=users.find(x=>x.email.toLowerCase()===e.toLowerCase()&&x.password===p);if(!u){setErr("No account found.");return}onLogin(u)}
+  const [loading,setLoading]=useState(false)
+  const try_=async(e,p)=>{
+    setLoading(true);setErr("")
+    const {error}=await supabase.auth.signInWithPassword({email:e,password:p})
+    if(error){setErr("Invalid email or password.");setLoading(false);return}
+    setLoading(false)
+  }
   return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#EFF6FF 0%,#F5F3FF 100%)",padding:16,fontFamily:"system-ui,sans-serif"}}>
       <div style={{width:"100%",maxWidth:400}}>
@@ -259,20 +279,7 @@ function Login({users,onLogin}){
           <p style={{fontSize:13,color:C.textMuted,margin:0}}>South Bend Community School Corporation</p>
         </div>
         <Box style={{boxShadow:SH.lg,borderRadius:R.xl,padding:24}}>
-          <p style={{...lbl,marginBottom:10}}>Quick Login</p>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
-            {[{label:"Admin",role:"admin",e:"admin@demo.com",p:"demo"},{label:"Supervisor",role:"supervisor",e:"mgarcia@demo.com",p:"demo"},{label:"Director",role:"director",e:"jwilson@demo.com",p:"demo"},{label:"Chef",role:"chef",e:"schen@demo.com",p:"demo"}].map(a=>{
-              const c=RC[a.role]
-              return <button key={a.label} onClick={()=>try_(a.e,a.p)} style={{background:c.bg,color:c.t,border:"none",borderRadius:R.md,padding:"9px 10px",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontFamily:"inherit"}}>
-                <span style={{width:7,height:7,borderRadius:"50%",background:c.t,flexShrink:0}}/>{a.label}
-              </button>
-            })}
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-            <div style={{flex:1,height:1,background:"#E2E8F0"}}/>
-            <span style={{fontSize:11,color:C.textLight,whiteSpace:"nowrap"}}>or sign in manually</span>
-            <div style={{flex:1,height:1,background:"#E2E8F0"}}/>
-          </div>
+
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div><L>Email</L><Inp type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@sbcsc.k12.in.us"/></div>
             <div><L>Password</L>
@@ -282,9 +289,9 @@ function Login({users,onLogin}){
               </div>
             </div>
             {err&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"9px 12px",borderRadius:R.md,fontSize:13,display:"flex",alignItems:"center",gap:8}}><AlertCircle size={14}/>{err}</div>}
-            <button onClick={()=>try_(email,pw)} style={{padding:11,borderRadius:R.md,background:"#2563EB",color:"#fff",fontWeight:700,fontSize:14,border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign In</button>
+            <button onClick={()=>try_(email,pw)} disabled={loading} style={{padding:11,borderRadius:R.md,background:"#2563EB",color:"#fff",fontWeight:700,fontSize:14,border:"none",cursor:loading?"not-allowed":"pointer",opacity:loading?.7:1,fontFamily:"inherit"}}>{loading?"Signing in...":"Sign In"}</button>
           </div>
-          <p style={{textAlign:"center",fontSize:11,color:C.textLight,marginTop:14}}>Demo password: <code style={{background:"#F8FAFC",padding:"1px 6px",borderRadius:4,color:C.textMuted,fontWeight:600}}>demo</code></p>
+          <p style={{textAlign:"center",fontSize:11,color:C.textLight,marginTop:14}}>Contact your administrator for access.</p>
         </Box>
       </div>
     </div>
