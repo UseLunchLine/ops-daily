@@ -978,23 +978,131 @@ function AdminPage({schools,setSchools,users,toast}){
   const [tab,setTab]=useState("users")
   const [es,setEs]=useState(null)
   const [af,setAf]=useState({chef_id:"",director_id:"",supervisor_id:""})
+  const [supaUsers,setSupaUsers]=useState([])
+  const [userModal,setUserModal]=useState(null)
+  const [userForm,setUserForm]=useState({name:"",email:"",password:"",role:"chef",phone:"",school_ids:[],is_active:true})
+  const [userLoading,setUserLoading]=useState(false)
+  const [userErr,setUserErr]=useState("")
+
+  useEffect(()=>{
+    if(tab==="users") loadUsers()
+  },[tab])
+
+  const loadUsers=async()=>{
+    const {data}=await supabase.from("app_users").select("*").order("name")
+    if(data)setSupaUsers(data)
+  }
+
+  const openAddUser=()=>{
+    setUserForm({name:"",email:"",password:"",role:"chef",phone:"",school_ids:[],is_active:true})
+    setUserErr("")
+    setUserModal("add")
+  }
+
+  const saveUser=async()=>{
+    if(!userForm.name.trim()||!userForm.email.trim()){setUserErr("Name and email are required.");return}
+    if(userModal==="add"&&!userForm.password.trim()){setUserErr("Password is required.");return}
+    setUserLoading(true);setUserErr("")
+    try{
+      if(userModal==="add"){
+        const {data,error}=await supabase.auth.admin.createUser({
+          email:userForm.email,
+          password:userForm.password,
+          email_confirm:true,
+          user_metadata:{name:userForm.name,role:userForm.role,phone:userForm.phone}
+        })
+        if(error)throw error
+        await supabase.from("app_users").insert({id:data.user.id,name:userForm.name,email:userForm.email,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:true})
+        toast.show("User created successfully!")
+      } else {
+        await supabase.from("app_users").update({name:userForm.name,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:userForm.is_active}).eq("id",userModal.id)
+        toast.show("User updated!")
+      }
+      loadUsers()
+      setUserModal(null)
+    }catch(e){
+      setUserErr(e.message||"Error saving user.")
+    }
+    setUserLoading(false)
+  }
+
+  const toggleUserSchool=(sid)=>{
+    const ids=userForm.school_ids||[]
+    setUserForm(f=>({...f,school_ids:ids.includes(sid)?ids.filter(x=>x!==sid):[...ids,sid]}))
+  }
+
   const byRole=r=>users.filter(u=>u.role===r&&u.is_active)
   const uB=id=>users.find(u=>u.id===id)
   const save=()=>{setSchools(p=>p.map(s=>s.id===es.id?{...s,chef_id:af.chef_id||null,director_id:af.director_id||null,supervisor_id:af.supervisor_id||null}:s));toast.show("Assignment saved!");setEs(null)}
+
+  const ROLES=["admin","supervisor","director","chef","manager","csa","ppa"]
+
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Admin Panel" subtitle="Manage users and school assignments"/>
       <TabBar tabs={[{id:"users",label:"User Management"},{id:"assign",label:"Staff Assignments"}]} active={tab} set={id=>{setTab(id);setEs(null)}}/>
+
+      {userModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
+          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:500,boxShadow:SH.lg,marginTop:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>{userModal==="add"?"Add New User":"Edit User"}</span>
+              <button onClick={()=>setUserModal(null)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
+            </div>
+            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
+              {userErr&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"10px 14px",borderRadius:R.md,fontSize:13}}>{userErr}</div>}
+              <div><L>Full Name *</L><Inp value={userForm.name} onChange={e=>setUserForm(f=>({...f,name:e.target.value}))} placeholder="Jane Smith"/></div>
+              <div><L>Email *</L><Inp type="email" value={userForm.email} onChange={e=>setUserForm(f=>({...f,email:e.target.value}))} placeholder="jane@sbcsc.edu"/></div>
+              {userModal==="add"&&<div><L>Password *</L><Inp type="password" value={userForm.password} onChange={e=>setUserForm(f=>({...f,password:e.target.value}))} placeholder="Minimum 6 characters"/></div>}
+              <div><L>Phone</L><Inp value={userForm.phone} onChange={e=>setUserForm(f=>({...f,phone:e.target.value}))} placeholder="(574) 555-0100"/></div>
+              <div><L>Role</L>
+                <Sel value={userForm.role} onChange={e=>setUserForm(f=>({...f,role:e.target.value}))}>
+                  {ROLES.map(r=><option key={r} value={r}>{r.charAt(0).toUpperCase()+r.slice(1)}</option>)}
+                </Sel>
+              </div>
+              <div>
+                <L>Assigned Schools</L>
+                <div style={{border:"1px solid #E2E8F0",borderRadius:R.md,overflow:"hidden",maxHeight:180,overflowY:"auto"}}>
+                  {Object.entries(TL).map(([type,typelabel])=>[
+                    <div key={type} style={{padding:"5px 12px",background:"#F8FAFC",fontSize:10,fontWeight:700,color:C.textMuted,textTransform:"uppercase"}}>{typelabel}</div>,
+                    ...schools.filter(s=>s.type===type).map(s=>{
+                      const checked=(userForm.school_ids||[]).includes(s.id)
+                      return <label key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",cursor:"pointer",borderTop:"1px solid #F1F5F9",background:checked?"#EFF6FF":"#fff"}}>
+                        <input type="checkbox" checked={checked} onChange={()=>toggleUserSchool(s.id)} style={{width:14,height:14,accentColor:"#2563EB"}}/>
+                        <span style={{fontSize:13,color:checked?"#2563EB":C.text,fontWeight:checked?600:400}}>{s.name}</span>
+                      </label>
+                    })
+                  ])}
+                </div>
+              </div>
+              {userModal!=="add"&&<label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                <input type="checkbox" checked={userForm.is_active} onChange={e=>setUserForm(f=>({...f,is_active:e.target.checked}))} style={{width:15,height:15,accentColor:"#2563EB"}}/>
+                <span style={{fontSize:13,fontWeight:600,color:C.text}}>Active user</span>
+              </label>}
+              <div style={{display:"flex",gap:10,paddingTop:4}}>
+                <Btn onClick={()=>setUserModal(null)} variant="outline">Cancel</Btn>
+                <Btn onClick={saveUser} disabled={userLoading}>{userLoading?"Saving...":"Save User"}</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab==="users"&&<div>
-        <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",padding:"10px 14px",borderRadius:R.md,fontSize:13,marginBottom:14}}>In the live app, users are managed via the admin dashboard.</div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+          <Btn onClick={openAddUser}><Plus size={14}/> Add User</Btn>
+        </div>
         <Box style={{padding:0,overflow:"hidden"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-            <thead><tr style={{background:"#F8FAFC",borderBottom:"2px solid #E2E8F0"}}>{["Name","Email","Role","Status"].map(h=><th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase",letterSpacing:".06em"}}>{h}</th>)}</tr></thead>
-            <tbody>{users.map(u=><tr key={u.id} style={{borderBottom:"1px solid #F1F5F9"}}>
-              <td style={{padding:"10px 14px",fontWeight:700,color:C.text}}>{u.name}</td>
+            <thead><tr style={{background:"#F8FAFC",borderBottom:"2px solid #E2E8F0"}}>{["Name","Email","Phone","Role","Schools","Status","Actions"].map(h=><th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase",letterSpacing:".06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+            <tbody>{supaUsers.length===0?<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:C.textMuted}}>No users yet. Click Add User to get started.</td></tr>:supaUsers.map(u=><tr key={u.id} style={{borderBottom:"1px solid #F1F5F9"}}>
+              <td style={{padding:"10px 14px",fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{u.name}</td>
               <td style={{padding:"10px 14px",color:C.textMuted,fontSize:12}}>{u.email}</td>
+              <td style={{padding:"10px 14px",color:C.textMuted,fontSize:12}}>{u.phone||"--"}</td>
               <td style={{padding:"10px 14px"}}><RP role={u.role}/></td>
+              <td style={{padding:"10px 14px",fontSize:12,color:C.textMuted}}>{(u.school_ids||[]).length>0?(u.school_ids||[]).length+" school"+(u.school_ids.length!==1?"s":""):"--"}</td>
               <td style={{padding:"10px 14px"}}><Pill bg={u.is_active?"#F0FDF4":"#F1F5F9"} tx={u.is_active?"#15803D":C.textMuted}>{u.is_active?"Active":"Inactive"}</Pill></td>
+              <td style={{padding:"10px 14px"}}><button onClick={()=>{setUserForm({...u,password:""});setUserErr("");setUserModal(u)}} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#1565C0",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Edit</button></td>
             </tr>)}</tbody>
           </table>
         </Box>
