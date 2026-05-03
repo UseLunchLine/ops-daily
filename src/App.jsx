@@ -9,7 +9,7 @@ const STATS=[{id:"green",label:"All Good",c:"#2E7D32",l:"#F1F8E9",b:"#AED581",t:
 const SM=Object.fromEntries(STATS.map(s=>[s.id,s]))
 const ISS=[{id:"food_out",label:"Ran out of food"},{id:"low_food",label:"Low food supply"},{id:"staffing",label:"Staffing issue"},{id:"equip",label:"Equipment issue"},{id:"delivery",label:"Delivery problem"},{id:"health",label:"Health/Safety"},{id:"power",label:"Power/Utilities"},{id:"behavior",label:"Student behavior"},{id:"pest",label:"Pest/Sanitation"},{id:"weather",label:"Weather-related"}]
 const RC={admin:{bg:"#EDE7F6",t:"#4527A0"},supervisor:{bg:"#E1F5FE",t:"#01579B"},director:{bg:"#E8EAF6",t:"#283593"},chef:{bg:"#FFF3E0",t:"#E65100"}}
-const CTB={calloff:{bg:"#E3F2FD",tx:"#1565C0",label:"Call-Off"},sick:{bg:"#FFFDE7",tx:"#F57F17",label:"Sick Day"},ncns:{bg:"#FFEBEE",tx:"#C62828",label:"No Call No Show"}}
+const CTB={calloff:{bg:"#E3F2FD",tx:"#1565C0",label:"Call-Off"},sick:{bg:"#FFFDE7",tx:"#F57F17",label:"Sick Day"},ncns:{bg:"#FFEBEE",tx:"#C62828",label:"No Call No Show"},tardy:{bg:"#FFF3E0",tx:"#E65100",label:"Tardy"}}
 const DIR_ROLES=[{id:"all",label:"All",color:"#546E7A",bg:"#ECEFF1"},{id:"manager",label:"Managers",color:"#1565C0",bg:"#E3F2FD"},{id:"chef",label:"Chefs",color:"#E65100",bg:"#FFF3E0"},{id:"director",label:"Directors",color:"#6A1B9A",bg:"#F3E5F5"},{id:"asst_dir",label:"Asst. Directors",color:"#006064",bg:"#E0F7FA"},{id:"supervisor",label:"Op Supervisors",color:"#1B5E20",bg:"#E8F5E9"},{id:"csa",label:"CSAs",color:"#4E342E",bg:"#EFEBE9"},{id:"ppa",label:"PPAs",color:"#283593",bg:"#E8EAF6"},{id:"temp",label:"Temp Staff",color:"#7B1FA2",bg:"#F3E5F5"}]
 const EMPTY_ENTRY={name:"",position:"",role_type:"manager",school_ids:[],phone:"",email:"",is_active:true,is_temp:false,temp_end_date:""}
 const TODAY=new Date().toISOString().slice(0,10)
@@ -704,8 +704,8 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
           <div><L>Staff Name *</L><Inp value={form.staff_name} onChange={e=>setForm(f=>({...f,staff_name:e.target.value}))} placeholder="Full name"/></div>
           <div><L>Position</L><Inp value={form.staff_role} onChange={e=>setForm(f=>({...f,staff_role:e.target.value}))} placeholder="e.g. Cook, Manager"/></div>
           <div><L>Type *</L>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-              {[{id:"calloff",l:"Call-Off"},{id:"sick",l:"Sick Day"},{id:"ncns",l:"No Call No Show"}].map(t=>{
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+              {[{id:"calloff",l:"Call-Off"},{id:"sick",l:"Sick Day"},{id:"ncns",l:"No Call No Show"},{id:"tardy",l:"Tardy"}].map(t=>{
                 const a=form.type===t.id,tb=CTB[t.id]
                 return <button key={t.id} onClick={()=>setForm(f=>({...f,type:t.id}))} style={{padding:"11px 6px",borderRadius:R.md,border:"2px solid "+(a?tb.tx:C.border),background:a?tb.bg:"#fff",color:a?tb.tx:C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,textAlign:"center",fontFamily:"inherit"}}>{t.l}</button>
               })}
@@ -718,7 +718,7 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
       {tab==="view"&&<div>
         <Box style={{marginBottom:14,padding:"12px 16px",display:"flex",flexWrap:"wrap",gap:10,alignItems:"flex-end"}}>
           <div style={{flex:"1 1 160px",maxWidth:260}}><L>School</L><SG schools={schools} value={fS} onChange={e=>setFS(e.target.value)} all="All Schools"/></div>
-          <div><L>Type</L><select value={fT} onChange={e=>setFT(e.target.value)} style={{...inp}}><option value="">All Types</option><option value="calloff">Call-Off</option><option value="sick">Sick Day</option><option value="ncns">No Call No Show</option></select></div>
+          <div><L>Type</L><select value={fT} onChange={e=>setFT(e.target.value)} style={{...inp}}><option value="">All Types</option><option value="calloff">Call-Off</option><option value="sick">Sick Day</option><option value="ncns">No Call No Show</option><option value="tardy">Tardy</option></select></div>
         </Box>
         {mobile?(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -727,7 +727,10 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
               <Box key={c.id} style={{padding:14,borderLeft:"4px solid "+tb.tx}}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:6}}>
                   <div><div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:2}}>{c.staff_name}</div>{c.staff_role&&<div style={{fontSize:12,color:C.textMuted}}>{c.staff_role}</div>}</div>
-                  <Pill bg={tb.bg} tx={tb.tx}>{tb.label}</Pill>
+                  <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                    <Pill bg={tb.bg} tx={tb.tx}>{tb.label}</Pill>
+                    <button onClick={async()=>{if(window.confirm("Delete?")){await supabase.from("calloffs").delete().eq("id",c.id);setCalloffs(p=>p.filter(x=>x.id!==c.id));toast.show("Deleted.")}}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"3px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>Del</button>
+                  </div>
                 </div>
                 <div style={{fontSize:12,color:C.textMuted,display:"flex",flexWrap:"wrap",gap:6}}>
                   <span style={{fontWeight:700,color:C.text}}>{sch?.name||"--"}</span><span>-</span><span>{fd(c.date)}</span>
@@ -740,8 +743,8 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
           <Box style={{padding:0,overflow:"hidden"}}>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:480}}>
-                <thead><tr style={{background:"#F8FAFC",borderBottom:"2px solid #E2E8F0"}}>{["Date","School","Staff","Position","Type","Note"].map(h=><th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase",letterSpacing:".06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
-                <tbody>{filtered.length===0?<tr><td colSpan={6} style={{textAlign:"center",padding:40,color:C.textMuted}}>No records.</td></tr>:filtered.map(c=>{const tb=CTB[c.type]||CTB.calloff;return(
+                <thead><tr style={{background:"#F8FAFC",borderBottom:"2px solid #E2E8F0"}}>{["Date","School","Staff","Position","Type","Note",""].map(h=><th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase",letterSpacing:".06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                <tbody>{filtered.length===0?<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:C.textMuted}}>No records.</td></tr>:filtered.map(c=>{const tb=CTB[c.type]||CTB.calloff;return(
                   <tr key={c.id} style={{borderBottom:"1px solid #F1F5F9"}}>
                     <td style={{padding:"10px 14px",color:C.textMuted,fontSize:12,whiteSpace:"nowrap"}}>{fd(c.date)}</td>
                     <td style={{padding:"10px 14px",fontWeight:600,whiteSpace:"nowrap"}}>{sById(c.school_id)?.name||"--"}</td>
@@ -749,6 +752,7 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
                     <td style={{padding:"10px 14px",color:C.textMuted,fontSize:12}}>{c.staff_role||"--"}</td>
                     <td style={{padding:"10px 14px"}}><Pill bg={tb.bg} tx={tb.tx}>{tb.label}</Pill></td>
                     <td style={{padding:"10px 14px",color:C.textMuted,fontSize:12,maxWidth:160}}><span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.note||"--"}</span></td>
+                    <td style={{padding:"10px 14px"}}><button onClick={async()=>{if(window.confirm("Delete this record?")){await supabase.from("calloffs").delete().eq("id",c.id);setCalloffs(p=>p.filter(x=>x.id!==c.id));toast.show("Record deleted.")}}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#DC2626",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Delete</button></td>
                   </tr>
                 )})}</tbody>
               </table>
