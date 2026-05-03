@@ -778,15 +778,15 @@ function CalloffStats({calloffs,schools,mobile}){
     const start=yr+"-"+String(mo).padStart(2,"0")+"-01",end=yr+"-"+String(mo).padStart(2,"0")+"-"+String(new Date(yr,mo,0).getDate()).padStart(2,"0")
     let all=calloffs.filter(c=>c.date>=start&&c.date<=end)
     if(sf!=="all")all=all.filter(c=>c.school_id===sf)
-    const bySchool=schools.map(s=>{const sr=all.filter(c=>c.school_id===s.id);if(!sr.length)return null;return{s,total:sr.length,calloff:sr.filter(c=>c.type==="calloff").length,sick:sr.filter(c=>c.type==="sick").length,ncns:sr.filter(c=>c.type==="ncns").length,staff:[...new Set(sr.map(c=>c.staff_name))]}}).filter(Boolean).sort((a,b)=>b.total-a.total)
-    setData({total:all.length,calloff:all.filter(c=>c.type==="calloff").length,sick:all.filter(c=>c.type==="sick").length,ncns:all.filter(c=>c.type==="ncns").length,bySchool})
+    const bySchool=schools.map(s=>{const sr=all.filter(c=>c.school_id===s.id);if(!sr.length)return null;return{s,total:sr.length,calloff:sr.filter(c=>c.type==="calloff").length,sick:sr.filter(c=>c.type==="sick").length,ncns:sr.filter(c=>c.type==="ncns").length,tardy:sr.filter(c=>c.type==="tardy").length,staff:[...new Set(sr.map(c=>c.staff_name))]}}).filter(Boolean).sort((a,b)=>b.total-a.total)
+    setData({total:all.length,calloff:all.filter(c=>c.type==="calloff").length,sick:all.filter(c=>c.type==="sick").length,ncns:all.filter(c=>c.type==="ncns").length,tardy:all.filter(c=>c.type==="tardy").length,bySchool})
     setAiInsight(null)
   }
 
   const getAIInsight=async()=>{
     if(!data)return
     setAiLoading(true)
-    const lines=data.bySchool.map(r=>r.s.name+": "+r.total+" total ("+r.calloff+" call-offs, "+r.sick+" sick, "+r.ncns+" NCNS). Staff: "+r.staff.join(", "))
+    const lines=data.bySchool.map(r=>r.s.name+": "+r.total+" total ("+r.calloff+" call-offs, "+r.sick+" sick, "+r.ncns+" NCNS, "+r.tardy+" tardy). Staff: "+r.staff.join(", "))
     const result=await callAI([{role:"user",content:"Analyze call-off patterns for a school district food service. Write 2-3 sentences identifying concerning patterns. Be direct.\n\n"+lines.join("\n")}])
     setAiInsight(result||"Could not generate insight.")
     setAiLoading(false)
@@ -802,8 +802,8 @@ function CalloffStats({calloffs,schools,mobile}){
       </Box>
       {aiInsight&&<AISummaryBox text={aiInsight}/>}
       {data&&<>
-        <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(4,1fr)",gap:10,marginBottom:14}}>
-          {[{label:"Total",val:data.total,bg:"#F8FAFC",tx:C.text,bd:"#E2E8F0"},{label:"Call-Offs",val:data.calloff,bg:"#EFF6FF",tx:"#1D4ED8",bd:"#BFDBFE"},{label:"Sick Days",val:data.sick,bg:"#FFFBEB",tx:"#B45309",bd:"#FDE68A"},{label:"No Call No Show",val:data.ncns,bg:"#FEF2F2",tx:"#DC2626",bd:"#FECACA"}].map(c=>(
+        <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(5,1fr)",gap:10,marginBottom:14}}>
+          {[{label:"Total",val:data.total,bg:"#F8FAFC",tx:C.text,bd:"#E2E8F0"},{label:"Call-Offs",val:data.calloff,bg:"#EFF6FF",tx:"#1D4ED8",bd:"#BFDBFE"},{label:"Sick Days",val:data.sick,bg:"#FFFBEB",tx:"#B45309",bd:"#FDE68A"},{label:"No Call No Show",val:data.ncns,bg:"#FEF2F2",tx:"#DC2626",bd:"#FECACA"},{label:"Tardy",val:data.tardy,bg:"#FFF3E0",tx:"#E65100",bd:"#FFCC80"}].map(c=>(
             <div key={c.label} style={{background:c.bg,borderRadius:R.lg,padding:"14px 16px",border:"1px solid "+c.bd}}>
               <div style={{fontSize:28,fontWeight:900,color:c.tx,lineHeight:1}}>{c.val}</div>
               <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:4}}>{c.label}</div>
@@ -826,11 +826,13 @@ function CalloffStats({calloffs,schools,mobile}){
                 {row.calloff>0&&<div style={{flex:row.calloff,background:"#3B82F6"}}/>}
                 {row.sick>0&&<div style={{flex:row.sick,background:"#F59E0B"}}/>}
                 {row.ncns>0&&<div style={{flex:row.ncns,background:"#EF4444"}}/>}
+                {row.tardy>0&&<div style={{flex:row.tardy,background:"#F97316"}}/>}
               </div>
-              <div style={{display:"flex",gap:14,fontSize:12}}>
+              <div style={{display:"flex",gap:14,fontSize:12,flexWrap:"wrap"}}>
                 {row.calloff>0&&<span style={{color:"#1D4ED8",fontWeight:700}}>Call-Off: {row.calloff}</span>}
                 {row.sick>0&&<span style={{color:"#B45309",fontWeight:700}}>Sick: {row.sick}</span>}
                 {row.ncns>0&&<span style={{color:"#DC2626",fontWeight:700}}>NCNS: {row.ncns}</span>}
+                {row.tardy>0&&<span style={{color:"#E65100",fontWeight:700}}>Tardy: {row.tardy}</span>}
               </div>
               {row.staff.length>0&&<div style={{fontSize:11,color:C.textLight,marginTop:4}}>Staff: {row.staff.join(", ")}</div>}
             </div>
@@ -996,15 +998,10 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
   const [userLoading,setUserLoading]=useState(false)
   const [userErr,setUserErr]=useState("")
 
-  useEffect(()=>{
-    if(tab==="users") loadUsers()
-  },[tab])
-
   const loadUsers=async()=>{
     const {data}=await supabase.from("app_users").select("*").order("name")
     if(data)setSupaUsers(data)
   }
-
 
   const openAddUser=()=>{
     setUserForm({name:"",email:"",password:"",role:"chef",phone:"",school_ids:[],is_active:true})
@@ -1045,7 +1042,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
     setUserForm(f=>({...f,school_ids:ids.includes(sid)?ids.filter(x=>x!==sid):[...ids,sid]}))
   }
 
-  const byRole=r=>users.filter(u=>u.role===r&&u.is_active)
+  const byRole=r=>[...users.filter(u=>u.role===r&&u.is_active),...supaUsers.filter(u=>u.role===r&&u.is_active)].filter((u,i,a)=>a.findIndex(x=>x.id===u.id)===i)
   const uB=id=>users.find(u=>u.id===id)
   const save=()=>{setSchools(p=>p.map(s=>s.id===es.id?{...s,chef_id:af.chef_id||null,director_id:af.director_id||null,supervisor_id:af.supervisor_id||null}:s));toast.show("Assignment saved!");setEs(null)}
 
