@@ -159,7 +159,7 @@ export default function App(){
       ])
       if(r.data&&r.data.length>0)setRecaps(r.data)
       if(co.data&&co.data.length>0)setCalloffs(co.data)
-      if(d.data&&d.data.length>0)setDirectory(d.data)
+      if(d.data!==null)setDirectory(d.data)
       if(su.data)setSupaUsers(su.data)
       setDbReady(true)
     }
@@ -854,7 +854,7 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
     else{const updated={...form,id:modal.id,name:form.name.trim()};setDirectory(p=>p.map(e=>e.id===modal.id?updated:e));await supabase.from("directory").update(updated).eq("id",modal.id);toast.show("Staff member updated!")}
     setModal(null)
   }
-  const del=async e=>{if(window.confirm("Remove "+e.name+"?")){const{error}=await supabase.from("directory").delete().eq("id",e.id);if(error){toast.show("Could not delete: "+error.message,"error");return}setDirectory(p=>p.filter(x=>x.id!==e.id));toast.show(e.name+" removed.")}}
+  const del=async e=>{if(window.confirm("Remove "+e.name+"?")){const{error}=await supabase.from("directory").delete().eq("id",e.id);if(error){toast.show("Could not delete: "+error.message,"error");return}setDirectory(p=>p.filter(x=>x.id!==e.id));toast.show(e.name+" removed successfully!")}}
   const roleMeta=id=>DIR_ROLES.find(r=>r.id===id)||{label:"Staff",color:C.textMuted,bg:C.bg}
   const toggleSchool=(sid)=>{const ids=form.school_ids||[];setForm(f=>({...f,school_ids:ids.includes(sid)?ids.filter(x=>x!==sid):[...ids,sid]}))}
   const getSchoolNames=e=>{const ids=e.school_ids||[];if(!ids.length)return null;if(ids.length===1)return sById(ids[0])?.name||"--";return ids.length+" schools"}
