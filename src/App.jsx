@@ -500,7 +500,7 @@ function SubmitPage({user,schools,setRecaps,toast}){
   }
 
   return(
-    <div style={{padding:"24px 20px",maxWidth:580}}>
+    <div style={{padding:"24px 20px"}}>
       <PageHeader title="Submit Recap" subtitle="Log today's food service status"/>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         {err&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"10px 14px",borderRadius:R.md,fontSize:13,display:"flex",alignItems:"center",gap:8}}><AlertCircle size={15}/>{err}</div>}
@@ -696,7 +696,7 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Call-Off Tracking" subtitle="Log and monitor staff absences"/>
       <TabBar tabs={[{id:"log",label:"Log Call-Off"},{id:"view",label:"View Records"},{id:"stats",label:"Statistics"}]} active={tab} set={setTab}/>
-      {tab==="log"&&<div style={{maxWidth:500,display:"flex",flexDirection:"column",gap:14}}>
+      {tab==="log"&&<div style={{maxWidth:640,display:"flex",flexDirection:"column",gap:14}}>
         {err&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"10px 14px",borderRadius:R.md,fontSize:13,display:"flex",alignItems:"center",gap:8}}><AlertCircle size={15}/>{err}</div>}
         <Box style={{display:"flex",flexDirection:"column",gap:14}}>
           <div><L>Date</L><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={{...inp,width:"100%",maxWidth:180}}/></div>
@@ -789,7 +789,7 @@ function CalloffStats({calloffs,schools,mobile}){
   }
 
   return(
-    <div style={{maxWidth:680}}>
+    <div>
       <Box style={{marginBottom:14,padding:"12px 16px",display:"flex",flexWrap:"wrap",gap:10,alignItems:"flex-end"}}>
         <div><L>Month</L><input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={{...inp}}/></div>
         <div style={{flex:"1 1 160px",maxWidth:260}}><L>School</L><SG schools={schools} value={sf} onChange={e=>setSf(e.target.value)} all="All Schools"/></div>
