@@ -3,5 +3,9 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[build.environment]
+  VITE_SUPABASE_URL = "https://jqsafvnhgqyonlyxpbon.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impxc2Fmdm5oZ3F5b25seXhwYm9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MjAzMDYsImV4cCI6MjA5MzM5NjMwNn0.5Z5pS8nbU2bCZrTkzM_i-RTxq6TCp4KmLSt0nM13Wds"
+
 [functions]
   node_bundler = "esbuild"
