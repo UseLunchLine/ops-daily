@@ -181,18 +181,25 @@ export default function App(){
 
   useEffect(()=>{
     async function loadData(){
-      const [r,co,d,su,ev]=await Promise.all([
+      const [r,co,d,su,ev,sa]=await Promise.all([
         supabase.from("recaps").select("*").order("created_at",{ascending:false}),
         supabase.from("calloffs").select("*").order("created_at",{ascending:false}),
         supabase.from("directory").select("*").order("name"),
         supabase.from("app_users").select("*").order("name"),
-        supabase.from("events").select("*").order("date")
+        supabase.from("events").select("*").order("date"),
+        supabase.from("school_assignments").select("*")
       ])
       if(r.data&&r.data.length>0)setRecaps(r.data)
       if(co.data&&co.data.length>0)setCalloffs(co.data)
       if(d.data!==null)setDirectory(d.data)
       if(su.data)setSupaUsers(su.data)
       if(ev&&ev.data)setEvents(ev.data)
+      if(sa&&sa.data&&sa.data.length>0){
+        setSchools(p=>p.map(s=>{
+          const a=sa.data.find(x=>x.school_id===s.id)
+          return a?{...s,chef_id:a.chef_id||null,director_id:a.director_id||null,supervisor_id:a.supervisor_id||null}:s
+        }))
+      }
       setDbReady(true)
     }
     loadData()
@@ -240,22 +247,22 @@ export default function App(){
 
   if(mobile){
     return(
-      <div style={{background:C.bg,minHeight:"100vh",paddingBottom:72,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{background:C.bg,minHeight:"100vh",paddingBottom:80,fontFamily:"system-ui,sans-serif"}}>
         <style>{`@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
         <Toast msg={toast.msg} type={toast.type}/>
-        <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:SH.sm}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:32,height:32,borderRadius:10,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontWeight:900,fontSize:14}}>O</span></div>
-            <span style={{color:C.text,fontWeight:800,fontSize:16}}>Ops Daily</span>
+        <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:SH.sm}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:30,height:30,borderRadius:9,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontWeight:900,fontSize:13}}>O</span></div>
+            <span style={{color:C.text,fontWeight:800,fontSize:15}}>Ops Daily</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={async()=>{await supabase.auth.signOut()}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:8}}><LogOut size={15}/></button></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={async()=>{await supabase.auth.signOut()}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:7}}><LogOut size={14}/></button></div>
         </div>
-        <div style={{padding:16}}><PageEl/></div>
+        <div style={{padding:"12px 14px"}}><PageEl/></div>
         <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,overflowX:"auto",boxShadow:"0 -2px 8px rgba(0,0,0,.06)"}}>
           <div style={{display:"flex",minWidth:"max-content"}}>
             {navItems.map(({id,short,I})=>{const a=page===id;return(
-              <button key={id} onClick={()=>go(id)} style={{minWidth:64,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 6px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:10,fontWeight:700,fontFamily:"inherit"}}>
-                <I size={18}/>{short}
+              <button key={id} onClick={()=>go(id)} style={{minWidth:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"9px 4px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:9,fontWeight:700,fontFamily:"inherit"}}>
+                <I size={17}/>{short}
               </button>
             )})}
           </div>
@@ -1110,10 +1117,14 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
         setSupaUsers(p=>p.map(u=>u.id===userId?{...u,...userForm}:u))
         toast.show("User updated!")
       }
-      // Sync school assignments - update schools state
+      // Sync school assignments - update schools state and save to supabase
       const roleKey=userForm.role+"_id"
       if(["chef","director","supervisor"].includes(userForm.role)&&(userForm.school_ids||[]).length>0){
         setSchools(p=>p.map(s=>(userForm.school_ids||[]).includes(s.id)?{...s,[roleKey]:userId}:s))
+        // Save each assignment to supabase
+        for(const sid of userForm.school_ids){
+          await supabase.from("school_assignments").upsert({school_id:sid,[roleKey]:userId},{onConflict:"school_id"})
+        }
       }
       loadUsers()
       setUserModal(null)
@@ -1130,7 +1141,13 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
 
   const byRole=r=>[...users.filter(u=>u.role===r&&u.is_active),...supaUsers.filter(u=>u.role===r&&u.is_active)].filter((u,i,a)=>a.findIndex(x=>x.id===u.id)===i)
   const uB=id=>users.find(u=>u.id===id)
-  const save=()=>{setSchools(p=>p.map(s=>s.id===es.id?{...s,chef_id:af.chef_id||null,director_id:af.director_id||null,supervisor_id:af.supervisor_id||null}:s));toast.show("Assignment saved!");setEs(null)}
+  const save=async()=>{
+    const updated={chef_id:af.chef_id||null,director_id:af.director_id||null,supervisor_id:af.supervisor_id||null}
+    setSchools(p=>p.map(s=>s.id===es.id?{...s,...updated}:s))
+    await supabase.from("school_assignments").upsert({school_id:es.id,...updated},{onConflict:"school_id"})
+    toast.show("Assignment saved!")
+    setEs(null)
+  }
 
   const ROLES=["admin","supervisor","director","chef","manager","csa","ppa"]
 
@@ -1199,7 +1216,10 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
               <td style={{padding:"10px 14px"}}><RP role={u.role}/></td>
               <td style={{padding:"10px 14px",fontSize:12,color:C.textMuted}}>{(u.school_ids||[]).length>0?(u.school_ids||[]).length+" school"+(u.school_ids.length!==1?"s":""):"--"}</td>
               <td style={{padding:"10px 14px"}}><Pill bg={u.is_active?"#F0FDF4":"#F1F5F9"} tx={u.is_active?"#15803D":C.textMuted}>{u.is_active?"Active":"Inactive"}</Pill></td>
-              <td style={{padding:"10px 14px"}}><button onClick={()=>{setUserForm({...u,password:""});setUserErr("");setUserModal(u)}} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#1565C0",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Edit</button></td>
+              <td style={{padding:"10px 14px"}}><div style={{display:"flex",gap:6}}>
+                <button onClick={()=>{setUserForm({...u,password:""});setUserErr("");setUserModal(u)}} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#1565C0",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Edit</button>
+                <button onClick={async()=>{if(!window.confirm("Delete "+u.name+"? This cannot be undone."))return;await supabase.from("app_users").delete().eq("id",u.id);setSupaUsers(p=>p.filter(x=>x.id!==u.id));toast.show(u.name+" deleted.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#DC2626",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Delete</button>
+              </div></td>
             </tr>)}</tbody>
           </table>
         </Box>
@@ -1276,86 +1296,61 @@ function MapPage({schools,recaps,sById}){
   const [sel,setSel]=useState(null)
   const selSchool=schools.find(s=>s.id===sel)
   const selRecap=sel?todayRecaps.find(r=>r.school_id===sel):null
-  const coords=sel?SCHOOL_COORDS[sel]:null
-
   const statusCount=STATS.reduce((a,s)=>({...a,[s.id]:todayRecaps.filter(r=>r.status===s.id).length}),{})
-  const noRecap=schools.filter(s=>s.type!=="office"&&!todayRecaps.find(r=>r.school_id===s.id)).length
+  const noRecap=schools.filter(s=>s.type!=='office'&&!todayRecaps.find(r=>r.school_id===s.id)).length
 
-  const getMapUrl=(school)=>{
-    const addr=encodeURIComponent(school.address||school.name+", South Bend, IN")
-    return "https://maps.google.com/maps?q="+addr+"&t=&z=15&ie=UTF8&iwloc=&output=embed"
+  // South Bend centered - zoom 12 shows whole city
+  const districtMapUrl='https://maps.google.com/maps?q=41.6764,-86.2520&t=m&z=12&ie=UTF8&iwloc=&output=embed'
+  const getSchoolMapUrl=school=>{
+    const addr=encodeURIComponent((school.address||school.name+', South Bend, IN'))
+    return 'https://maps.google.com/maps?q='+addr+'&t=m&z=16&ie=UTF8&iwloc=B&output=embed'
   }
 
-  const districtMapUrl="https://maps.google.com/maps?q=South+Bend+Community+School+Corporation,+South+Bend,+IN&t=&z=12&ie=UTF8&iwloc=&output=embed"
-
   return(
-    <div style={{padding:"24px 20px"}}>
-      <PageHeader title="School Map" subtitle="South Bend Community School Corporation — click a school for details and location"/>
-
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:20}}>
-        <div style={{background:"#F8FAFC",borderRadius:R.lg,padding:"12px 16px",border:"1px solid #E2E8F0",textAlign:"center"}}>
-          <div style={{fontSize:24,fontWeight:900,color:C.text}}>{schools.filter(s=>s.type!=="office").length}</div>
+    <div style={{padding:'24px 20px'}}>
+      <PageHeader title='School Map' subtitle='South Bend Community School Corporation — default view shows all schools, click any school to zoom in'/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:20}}>
+        <div style={{background:'#F8FAFC',borderRadius:R.lg,padding:'12px 16px',border:'1px solid #E2E8F0',textAlign:'center'}}>
+          <div style={{fontSize:24,fontWeight:900,color:C.text}}>{schools.filter(s=>s.type!=='office').length}</div>
           <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>Total Schools</div>
         </div>
         {STATS.slice(0,3).map(s=>(
-          <div key={s.id} style={{background:s.l,borderRadius:R.lg,padding:"12px 16px",border:"1px solid "+s.b,textAlign:"center"}}>
+          <div key={s.id} style={{background:s.l,borderRadius:R.lg,padding:'12px 16px',border:'1px solid '+s.b,textAlign:'center'}}>
             <div style={{fontSize:24,fontWeight:900,color:s.c}}>{statusCount[s.id]||0}</div>
             <div style={{fontSize:11,fontWeight:600,color:s.t,marginTop:2}}>{s.label}</div>
           </div>
         ))}
-        <div style={{background:"#F8FAFC",borderRadius:R.lg,padding:"12px 16px",border:"1px solid #E2E8F0",textAlign:"center"}}>
-          <div style={{fontSize:24,fontWeight:900,color:"#94A3B8"}}>{noRecap}</div>
+        <div style={{background:'#F8FAFC',borderRadius:R.lg,padding:'12px 16px',border:'1px solid #E2E8F0',textAlign:'center'}}>
+          <div style={{fontSize:24,fontWeight:900,color:'#94A3B8'}}>{noRecap}</div>
           <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>No Recap Yet</div>
         </div>
       </div>
-
-      <div style={{display:"grid",gridTemplateColumns:sel?"1fr 340px":"1fr 340px",gap:16,alignItems:"start"}}>
-        <Box style={{padding:0,overflow:"hidden",borderRadius:R.lg}}>
-          <iframe
-            src={sel&&coords?getMapUrl(selSchool):districtMapUrl}
-            width="100%" height="480"
-            style={{border:0,display:"block"}}
-            allowFullScreen loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            title="School Map"
-          />
+      <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:16,alignItems:'start'}}>
+        <Box style={{padding:0,overflow:'hidden',borderRadius:R.lg}}>
+          <iframe key={sel||'district'} src={sel&&selSchool?getSchoolMapUrl(selSchool):districtMapUrl}
+            width='100%' height='500' style={{border:0,display:'block'}}
+            allowFullScreen loading='lazy' referrerPolicy='no-referrer-when-downgrade' title='School Map'/>
+          {sel&&<div style={{padding:'10px 16px',background:'#F8FAFC',borderTop:'1px solid #E2E8F0',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span style={{fontSize:13,fontWeight:700,color:C.text}}>{selSchool?.name}</span>
+            <button onClick={()=>setSel(null)} style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:R.md,padding:'5px 12px',cursor:'pointer',fontSize:12,fontWeight:600,color:C.textMuted,fontFamily:'inherit'}}>← All Schools</button>
+          </div>}
         </Box>
-
-        <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:480,overflowY:"auto"}}>
-          {sel&&selSchool&&(
-            <Box style={{padding:16,marginBottom:4,borderLeft:"4px solid "+(SM[getStatus(sel)]?.c||"#94A3B8")}}>
-              <div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:4}}>{selSchool.name}</div>
-              {selSchool.type!=="office"&&<div style={{marginBottom:6}}><Pill bg={TC[selSchool.type]?.bg||"#F1F5F9"} tx={TC[selSchool.type]?.tx||"#334155"} bd={TC[selSchool.type]?.bd||"#CBD5E1"}>{TL[selSchool.type]||selSchool.type}</Pill></div>}
-              {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:6}}>📍 {selSchool.address}</div>}
-              {selSchool.phone&&<a href={"tel:"+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:"none",display:"block",marginBottom:10}}>{selSchool.phone}</a>}
-              {selRecap?(
-                <div>
-                  <SBadge status={selRecap.status}/>
-                  {selRecap.note&&<div style={{fontSize:12,color:C.text,lineHeight:1.6,background:"#F0F9FF",borderLeft:"3px solid #2563EB",padding:"8px 10px",borderRadius:R.md,marginTop:8}}>{selRecap.note}</div>}
-                  {selRecap.resolved&&<div style={{marginTop:6}}><Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">Resolved</Pill></div>}
-                </div>
-              ):<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"8px 10px",fontSize:12,color:"#C2410C",fontWeight:600}}>No recap today</div>}
-              <button onClick={()=>setSel(null)} style={{marginTop:10,background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,padding:0,fontFamily:"inherit"}}>✕ Clear</button>
-            </Box>
-          )}
-
-          <div style={{fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:".06em",padding:"4px 2px"}}>All Schools — click to view on map</div>
-
+        <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:540,overflowY:'auto'}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.textMuted,textTransform:'uppercase',letterSpacing:'.06em',padding:'4px 2px',marginBottom:4}}>Click to zoom in</div>
           {Object.entries(TL).map(([type,typelabel])=>{
             const typeSchools=schools.filter(s=>s.type===type)
             if(!typeSchools.length)return null
+            const tc=TC[type]
             return(
               <div key={type}>
-                <div style={{fontSize:10,fontWeight:700,color:C.textLight,textTransform:"uppercase",padding:"4px 2px",marginTop:4}}>{typelabel}</div>
+                <div style={{fontSize:10,fontWeight:700,padding:'4px 8px',background:tc?.bg||'#F8FAFC',color:tc?.tx||C.textMuted,borderRadius:R.sm,marginBottom:3,border:'1px solid '+(tc?.bd||'#E2E8F0')}}>{typelabel} ({typeSchools.length})</div>
                 {typeSchools.map(s=>{
-                  const status=getStatus(s.id)
-                  const st=SM[status]
-                  const isSelected=sel===s.id
+                  const status=getStatus(s.id),st=SM[status],isSelected=sel===s.id
                   return(
-                    <button key={s.id} onClick={()=>setSel(isSelected?null:s.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:R.md,border:"1px solid "+(isSelected?"#BFDBFE":"#F1F5F9"),background:isSelected?"#EFF6FF":"#fff",cursor:"pointer",marginBottom:2,fontFamily:"inherit",textAlign:"left"}}>
-                      <span style={{width:10,height:10,borderRadius:"50%",background:st?st.c:"#94A3B8",flexShrink:0,display:"inline-block"}}/>
-                      <span style={{fontSize:12,fontWeight:isSelected?700:500,color:isSelected?"#2563EB":C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span>
-                      {status&&<span style={{fontSize:10,color:st?.t,fontWeight:700,flexShrink:0}}>{st?.label}</span>}
+                    <button key={s.id} onClick={()=>setSel(isSelected?null:s.id)} style={{width:'100%',display:'flex',alignItems:'center',gap:7,padding:'6px 8px',borderRadius:R.md,border:'1px solid '+(isSelected?'#BFDBFE':'transparent'),background:isSelected?'#EFF6FF':'transparent',cursor:'pointer',marginBottom:1,fontFamily:'inherit',textAlign:'left'}}>
+                      <span style={{width:8,height:8,borderRadius:'50%',background:st?st.c:'#CBD5E1',flexShrink:0,display:'inline-block'}}/>
+                      <span style={{fontSize:11,fontWeight:isSelected?700:400,color:isSelected?'#2563EB':C.text,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.name}</span>
+                      {status&&<span style={{fontSize:9,color:st?.t,fontWeight:700,flexShrink:0,background:st?.l,padding:'1px 4px',borderRadius:R.full,whiteSpace:'nowrap'}}>{st?.label}</span>}
                     </button>
                   )
                 })}
@@ -1364,6 +1359,27 @@ function MapPage({schools,recaps,sById}){
           })}
         </div>
       </div>
+      {sel&&selSchool&&(
+        <Box style={{marginTop:14,padding:16,borderLeft:'4px solid '+(SM[getStatus(sel)]?.c||'#94A3B8')}}>
+          <div style={{display:'flex',flexWrap:'wrap',gap:16,alignItems:'flex-start'}}>
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:4}}>{selSchool.name}</div>
+              {selSchool.type!=='office'&&TC[selSchool.type]&&<div style={{marginBottom:6}}><Pill bg={TC[selSchool.type].bg} tx={TC[selSchool.type].tx} bd={TC[selSchool.type].bd}>{TL[selSchool.type]}</Pill></div>}
+              {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>📍 {selSchool.address}</div>}
+              {selSchool.phone&&<a href={'tel:'+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:'none'}}>{selSchool.phone}</a>}
+            </div>
+            <div style={{flex:1,minWidth:200}}>
+              {selRecap?(
+                <div>
+                  <SBadge status={selRecap.status}/>
+                  {selRecap.note&&<div style={{fontSize:12,color:C.text,lineHeight:1.6,background:'#F0F9FF',borderLeft:'3px solid #2563EB',padding:'8px 10px',borderRadius:R.md,marginTop:8}}>{selRecap.note}</div>}
+                  {selRecap.resolved&&<div style={{marginTop:6}}><Pill bg='#F0FDF4' tx='#15803D' bd='#BBF7D0'>Resolved</Pill></div>}
+                </div>
+              ):<div style={{background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:R.md,padding:'8px 10px',fontSize:12,color:'#C2410C',fontWeight:600}}>No recap submitted today</div>}
+            </div>
+          </div>
+        </Box>
+      )}
     </div>
   )
 }
