@@ -159,9 +159,9 @@ function ResolveModal({recap,onClose,onResolve}){
 export default function App(){
   const [users]=useState(SU)
   const [schools,setSchools]=useState(SS)
-  const [recaps,setRecaps]=useState(SR)
-  const [calloffs,setCalloffs]=useState(SC)
-  const [directory,setDirectory]=useState(SD)
+  const [recaps,setRecaps]=useState([])
+  const [calloffs,setCalloffs]=useState([])
+  const [directory,setDirectory]=useState([])
   const [supaUsers,setSupaUsers]=useState([])
   const [events,setEvents]=useState([])
   const [dbReady,setDbReady]=useState(false)
@@ -190,8 +190,8 @@ export default function App(){
         supabase.from("events").select("*").order("date"),
         supabase.from("school_assignments").select("*")
       ])
-      if(r.data&&r.data.length>0)setRecaps(r.data)
-      if(co.data&&co.data.length>0)setCalloffs(co.data)
+      if(r.data)setRecaps(r.data)
+      if(co.data)setCalloffs(co.data)
       if(d.data!==null)setDirectory(d.data)
       if(su.data)setSupaUsers(su.data)
       if(ev&&ev.data)setEvents(ev.data)
