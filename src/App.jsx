@@ -45,6 +45,7 @@ const TODAY=new Date().toISOString().slice(0,10)
 const uid=()=>Math.random().toString(36).slice(2,8)
 const fd=d=>new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
 const ft=ts=>new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})
+const fmt=t=>{if(!t)return "";const[h,m]=t.split(":");const hr=parseInt(h);return(hr===0?12:hr>12?hr-12:hr)+":"+m+(hr<12?" AM":" PM")}
 
 async function callAI(messages,systemPrompt=""){
   try{
@@ -1305,9 +1306,9 @@ function MapPage({schools,recaps}){
 
   const getColor=status=>status?SM[status]?.c||"#94A3B8":"#94A3B8"
 
-  const makeIcon=(L,color)=>L.divIcon({
-    html:"<div style='width:14px;height:14px;border-radius:50%;background:"+color+";border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);'></div>",
-    className:"",iconSize:[14,14],iconAnchor:[7,7]
+  const makeIcon=(L,color,name="")=>L.divIcon({
+    html:"<div style='display:flex;flex-direction:column;align-items:center;gap:2px;'><div style='width:13px;height:13px;border-radius:50%;background:"+color+";border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.4);'></div>"+(name?"<div style='background:rgba(255,255,255,0.92);border:1px solid rgba(0,0,0,.12);border-radius:3px;padding:1px 4px;font-size:9px;font-weight:700;white-space:nowrap;color:#1E293B;max-width:90px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.15);'>"+name+"</div>":"")+"</div>",
+    className:"",iconSize:[100,36],iconAnchor:[50,13]
   })
 
   React.useEffect(()=>{
@@ -1346,7 +1347,7 @@ function MapPage({schools,recaps}){
       const marker=markersRef.current[s.id]
       if(!marker)return
       const status=todayRecaps.find(r=>r.school_id===s.id)?.status
-      marker.setIcon(makeIcon(L,getColor(status)))
+      marker.setIcon(makeIcon(L,getColor(status),s.name.replace(/Elementary|Academy|Traditional|Montessori|International|Early Childhood/g,"").trim()))
     })
   },[recaps])
 
@@ -1376,14 +1377,17 @@ function MapPage({schools,recaps}){
       <div ref={mapRef} style={{width:"100%",height:500,borderRadius:R.lg,border:"1px solid #E2E8F0",overflow:"hidden",zIndex:0}}/>
       {sel&&selSchool&&(
         <Box style={{marginTop:14,padding:16,borderLeft:"4px solid "+(SM[getStatus(sel)]?.c||"#94A3B8")}}>
-          <div style={{display:"flex",flexWrap:"wrap",gap:16,alignItems:"flex-start"}}>
-            <div style={{flex:1,minWidth:180}}>
-              <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:4}}>{selSchool.name}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:10}}>
+            <div style={{fontWeight:800,fontSize:15,color:C.text}}>{selSchool.name}</div>
+            <button onClick={()=>setSel(null)} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:18,padding:0,fontFamily:"inherit",flexShrink:0}}>✕</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div>
               {selSchool.type!=="office"&&TC[selSchool.type]&&<div style={{marginBottom:6}}><Pill bg={TC[selSchool.type].bg} tx={TC[selSchool.type].tx} bd={TC[selSchool.type].bd}>{TL[selSchool.type]}</Pill></div>}
-              {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>📍 {selSchool.address}</div>}
+              {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:6}}>📍 {selSchool.address}</div>}
               {selSchool.phone&&<a href={"tel:"+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:"none"}}>{selSchool.phone}</a>}
             </div>
-            <div style={{flex:1,minWidth:180}}>
+            <div>
               {selRecap?(
                 <div>
                   <SBadge status={selRecap.status}/>
@@ -1392,7 +1396,6 @@ function MapPage({schools,recaps}){
                 </div>
               ):<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"8px 10px",fontSize:12,color:"#C2410C",fontWeight:600}}>No recap submitted today</div>}
             </div>
-            <button onClick={()=>setSel(null)} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,padding:0,fontFamily:"inherit"}}>✕ Close</button>
           </div>
         </Box>
       )}
@@ -1417,6 +1420,8 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
   const [form,setForm]=useState({title:"",date:"",time:"",end_time:"",type:"meeting",location:"",school_ids:[],description:"",created_by:""})
   const [selDate,setSelDate]=useState(null)
   const [curMonth,setCurMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()}})
+  const [mobile,setMobile]=useState(window.innerWidth<768)
+  useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
   const canManage=isAdmin||user.role==="director"||user.role==="supervisor"
 
   const openAdd=(date="")=>{
@@ -1474,7 +1479,7 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
             <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
               <Pill bg={et.bg} tx={et.color} bd={et.bd}>{et.label}</Pill>
               <span style={{fontSize:11,color:C.textMuted,display:"flex",alignItems:"center",gap:3}}>
-                <Calendar size={10}/>{fd(e.date)}{e.time&&" at "+e.time}{e.end_time&&" - "+e.end_time}
+                <Calendar size={10}/>{fd(e.date)}{e.time&&" at "+fmt(e.time)}{e.end_time&&" - "+fmt(e.end_time)}
               </span>
             </div>
             {e.location&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>📍 {e.location}</div>}
@@ -1551,6 +1556,33 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
             <span style={{fontWeight:800,fontSize:18,color:C.text}}>{monthStr}</span>
             <button onClick={()=>setCurMonth(p=>{const d=new Date(p.y,p.m+1);return{y:d.getFullYear(),m:d.getMonth()}})} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit"}}>Next →</button>
           </div>
+          {mobile?(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {Array.from({length:days}).map((_,i)=>{
+                const d=i+1,ds=dateStr(y,m,d),dayEvents=eventsOnDay(d),isToday=ds===TODAY
+                if(!dayEvents.length&&!isToday)return null
+                return(
+                  <div key={d}>
+                    <div style={{fontSize:12,fontWeight:700,color:isToday?"#2563EB":C.textMuted,marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{width:22,height:22,borderRadius:"50%",background:isToday?"#2563EB":"transparent",display:"flex",alignItems:"center",justifyContent:"center",color:isToday?"#fff":C.textMuted,fontSize:11,fontWeight:800}}>{d}</span>
+                      {new Date(y,m,d).toLocaleDateString("en-US",{weekday:"short"})}
+                      {isToday&&<span style={{fontSize:10,background:"#EFF6FF",color:"#2563EB",padding:"1px 6px",borderRadius:R.full,fontWeight:700}}>Today</span>}
+                    </div>
+                    {dayEvents.map(e=>{const et=ET[e.type]||ET.other;return(
+                      <div key={e.id} style={{background:et.bg,borderLeft:"3px solid "+et.color,borderRadius:R.md,padding:"8px 12px",marginBottom:4}}>
+                        <div style={{fontWeight:700,fontSize:13,color:et.color}}>{e.title}</div>
+                        {e.time&&<div style={{fontSize:11,color:C.textMuted,marginTop:2}}>{fmt(e.time)}{e.end_time&&" - "+e.end_time}</div>}
+                        {e.location&&<div style={{fontSize:11,color:C.textMuted}}>📍 {e.location}</div>}
+                      </div>
+                    )})}
+                  </div>
+                )
+              }).filter(Boolean)}
+              {Array.from({length:days}).every((_,i)=>!eventsOnDay(i+1).length)&&(
+                <Box style={{textAlign:"center",padding:32,color:C.textMuted}}>No events this month.</Box>
+              )}
+            </div>
+          ):(
           <Box style={{padding:0,overflow:"hidden"}}>
             <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"2px solid #E2E8F0"}}>
               {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d} style={{padding:"10px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase"}}>{d}</div>)}
@@ -1577,6 +1609,7 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
               })}
             </div>
           </Box>
+          )}
           {selDate&&events.filter(e=>e.date===selDate).length>0&&(
             <div style={{marginTop:16}}>
               <div style={{fontSize:13,fontWeight:700,color:C.textMuted,marginBottom:8}}>{fd(selDate)}</div>
