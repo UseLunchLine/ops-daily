@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { supabase } from "./supabase.js"
 import { LayoutDashboard, PlusCircle, Building2, BarChart3, ShieldCheck, ClipboardList, BookOpen, LogOut, X, Check, CheckCircle, AlertCircle, Eye, EyeOff, Edit2, StickyNote, Plus, Printer, RefreshCw, Menu, CheckSquare, Calendar, Map, CalendarDays } from "lucide-react"
 
@@ -204,9 +204,10 @@ export default function App(){
     }
     loadData()
   },[])
-  const [page,setPage]=useState("dashboard")
+  const [page,setPage]=useState(()=>sessionStorage.getItem('ops_page')||"dashboard")
   const [ctx,setCtx]=useState(null)
   const [sideOpen,setSideOpen]=useState(false)
+  const go=(pg,c=null)=>{setPage(pg);sessionStorage.setItem('ops_page',pg);if(c)setCtx(c)}
   const [mobile,setMobile]=useState(window.innerWidth<768)
   const toast=useToast()
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
@@ -216,7 +217,6 @@ export default function App(){
   const perms={submit:true,report:user.role!=="chef",calloffs:user.role!=="chef",directory:true,admin:user.role==="admin"}
   const sById=id=>schools.find(s=>s.id===id)
   const uById=id=>users.find(u=>u.id===id)||supaUsers.find(u=>u.id===id)||{name:"--"}
-  const go=(pg,c=null)=>{setPage(pg);if(c)setCtx(c)}
 
   const navItems=[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
@@ -376,8 +376,9 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   const handleDeleteRecap=async(r)=>{
     const canDelete=isAdmin||r.created_by===user?.id
     if(!canDelete){toast.show("You can only delete your own recaps.","error");return}
-    if(!window.confirm("Delete this recap?"))return
-    await supabase.from("recaps").delete().eq("id",r.id)
+    if(!window.confirm("Delete this recap? This cannot be undone."))return
+    const{error}=await supabase.from("recaps").delete().eq("id",r.id)
+    if(error){toast.show("Delete failed.","error");return}
     setRecaps(p=>p.filter(x=>x.id!==r.id))
     toast.show("Recap deleted.")
   }
@@ -1289,7 +1290,7 @@ const SCHOOL_COORDS={
   "s27":{lat:41.6845,lng:-86.2523}   // 737 Beale St - Home Office
 }
 
-function MapPage({schools,recaps,sById}){
+function MapPage({schools,recaps}){
   const today=TODAY
   const todayRecaps=recaps.filter(r=>r.date===today)
   const getStatus=sid=>{const r=todayRecaps.find(x=>x.school_id===sid);return r?r.status:null}
@@ -1297,92 +1298,108 @@ function MapPage({schools,recaps,sById}){
   const selSchool=schools.find(s=>s.id===sel)
   const selRecap=sel?todayRecaps.find(r=>r.school_id===sel):null
   const statusCount=STATS.reduce((a,s)=>({...a,[s.id]:todayRecaps.filter(r=>r.status===s.id).length}),{})
-  const noRecap=schools.filter(s=>s.type!=='office'&&!todayRecaps.find(r=>r.school_id===s.id)).length
+  const noRecap=schools.filter(s=>s.type!=="office"&&!todayRecaps.find(r=>r.school_id===s.id)).length
+  const mapRef=React.useRef(null)
+  const leafRef=React.useRef(null)
+  const markersRef=React.useRef({})
 
-  // South Bend centered - zoom 12 shows whole city
-  const districtMapUrl='https://maps.google.com/maps?q=41.6764,-86.2520&t=m&z=12&ie=UTF8&iwloc=&output=embed'
-  const getSchoolMapUrl=school=>{
-    const addr=encodeURIComponent((school.address||school.name+', South Bend, IN'))
-    return 'https://maps.google.com/maps?q='+addr+'&t=m&z=16&ie=UTF8&iwloc=B&output=embed'
-  }
+  const getColor=status=>status?SM[status]?.c||"#94A3B8":"#94A3B8"
+
+  const makeIcon=(L,color)=>L.divIcon({
+    html:"<div style='width:14px;height:14px;border-radius:50%;background:"+color+";border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);'></div>",
+    className:"",iconSize:[14,14],iconAnchor:[7,7]
+  })
+
+  React.useEffect(()=>{
+    if(leafRef.current)return
+    const link=document.createElement("link")
+    link.rel="stylesheet"
+    link.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    document.head.appendChild(link)
+    const script=document.createElement("script")
+    script.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    script.onload=()=>{
+      const L=window.L
+      const map=L.map(mapRef.current,{center:[41.676,-86.268],zoom:12})
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(map)
+      leafRef.current=map
+      schools.forEach(s=>{
+        const coords=SCHOOL_COORDS[s.id]
+        if(!coords)return
+        const status=todayRecaps.find(r=>r.school_id===s.id)?.status
+        const color=getColor(status)
+        const marker=L.marker([coords.lat,coords.lng],{icon:makeIcon(L,color)})
+          .addTo(map)
+          .bindTooltip(s.name,{permanent:false,direction:"top"})
+          .bindPopup("<b>"+s.name+"</b><br/><small>"+(s.address||"")+"</small>"+(s.phone?"<br/><a href='tel:"+s.phone+"'>"+s.phone+"</a>":"")+"<br/><small style='color:"+color+"'>"+(status?SM[status]?.label:"No recap today")+"</small>")
+        marker.on("click",()=>setSel(s.id))
+        markersRef.current[s.id]=marker
+      })
+    }
+    document.head.appendChild(script)
+  },[])
+
+  React.useEffect(()=>{
+    if(!leafRef.current||!window.L)return
+    const L=window.L
+    schools.forEach(s=>{
+      const marker=markersRef.current[s.id]
+      if(!marker)return
+      const status=todayRecaps.find(r=>r.school_id===s.id)?.status
+      marker.setIcon(makeIcon(L,getColor(status)))
+    })
+  },[recaps])
 
   return(
-    <div style={{padding:'24px 20px'}}>
-      <PageHeader title='School Map' subtitle='South Bend Community School Corporation — default view shows all schools, click any school to zoom in'/>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:20}}>
-        <div style={{background:'#F8FAFC',borderRadius:R.lg,padding:'12px 16px',border:'1px solid #E2E8F0',textAlign:'center'}}>
-          <div style={{fontSize:24,fontWeight:900,color:C.text}}>{schools.filter(s=>s.type!=='office').length}</div>
-          <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>Total Schools</div>
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="School Map" subtitle="All SBCSC schools pinned — click any pin for details and today's status"/>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.textMuted}}><span style={{width:10,height:10,borderRadius:"50%",background:"#94A3B8",display:"inline-block"}}/> No recap</div>
+        {STATS.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.textMuted}}><span style={{width:10,height:10,borderRadius:"50%",background:s.c,display:"inline-block"}}/>{s.label}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:16}}>
+        <div style={{background:"#F8FAFC",borderRadius:R.lg,padding:"12px 16px",border:"1px solid #E2E8F0",textAlign:"center"}}>
+          <div style={{fontSize:22,fontWeight:900,color:C.text}}>{schools.filter(s=>s.type!=="office").length}</div>
+          <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>Schools</div>
         </div>
         {STATS.slice(0,3).map(s=>(
-          <div key={s.id} style={{background:s.l,borderRadius:R.lg,padding:'12px 16px',border:'1px solid '+s.b,textAlign:'center'}}>
-            <div style={{fontSize:24,fontWeight:900,color:s.c}}>{statusCount[s.id]||0}</div>
+          <div key={s.id} style={{background:s.l,borderRadius:R.lg,padding:"12px 16px",border:"1px solid "+s.b,textAlign:"center"}}>
+            <div style={{fontSize:22,fontWeight:900,color:s.c}}>{statusCount[s.id]||0}</div>
             <div style={{fontSize:11,fontWeight:600,color:s.t,marginTop:2}}>{s.label}</div>
           </div>
         ))}
-        <div style={{background:'#F8FAFC',borderRadius:R.lg,padding:'12px 16px',border:'1px solid #E2E8F0',textAlign:'center'}}>
-          <div style={{fontSize:24,fontWeight:900,color:'#94A3B8'}}>{noRecap}</div>
-          <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>No Recap Yet</div>
+        <div style={{background:"#F8FAFC",borderRadius:R.lg,padding:"12px 16px",border:"1px solid #E2E8F0",textAlign:"center"}}>
+          <div style={{fontSize:22,fontWeight:900,color:"#94A3B8"}}>{noRecap}</div>
+          <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>No Recap</div>
         </div>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:16,alignItems:'start'}}>
-        <Box style={{padding:0,overflow:'hidden',borderRadius:R.lg}}>
-          <iframe key={sel||'district'} src={sel&&selSchool?getSchoolMapUrl(selSchool):districtMapUrl}
-            width='100%' height='500' style={{border:0,display:'block'}}
-            allowFullScreen loading='lazy' referrerPolicy='no-referrer-when-downgrade' title='School Map'/>
-          {sel&&<div style={{padding:'10px 16px',background:'#F8FAFC',borderTop:'1px solid #E2E8F0',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span style={{fontSize:13,fontWeight:700,color:C.text}}>{selSchool?.name}</span>
-            <button onClick={()=>setSel(null)} style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:R.md,padding:'5px 12px',cursor:'pointer',fontSize:12,fontWeight:600,color:C.textMuted,fontFamily:'inherit'}}>← All Schools</button>
-          </div>}
-        </Box>
-        <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:540,overflowY:'auto'}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.textMuted,textTransform:'uppercase',letterSpacing:'.06em',padding:'4px 2px',marginBottom:4}}>Click to zoom in</div>
-          {Object.entries(TL).map(([type,typelabel])=>{
-            const typeSchools=schools.filter(s=>s.type===type)
-            if(!typeSchools.length)return null
-            const tc=TC[type]
-            return(
-              <div key={type}>
-                <div style={{fontSize:10,fontWeight:700,padding:'4px 8px',background:tc?.bg||'#F8FAFC',color:tc?.tx||C.textMuted,borderRadius:R.sm,marginBottom:3,border:'1px solid '+(tc?.bd||'#E2E8F0')}}>{typelabel} ({typeSchools.length})</div>
-                {typeSchools.map(s=>{
-                  const status=getStatus(s.id),st=SM[status],isSelected=sel===s.id
-                  return(
-                    <button key={s.id} onClick={()=>setSel(isSelected?null:s.id)} style={{width:'100%',display:'flex',alignItems:'center',gap:7,padding:'6px 8px',borderRadius:R.md,border:'1px solid '+(isSelected?'#BFDBFE':'transparent'),background:isSelected?'#EFF6FF':'transparent',cursor:'pointer',marginBottom:1,fontFamily:'inherit',textAlign:'left'}}>
-                      <span style={{width:8,height:8,borderRadius:'50%',background:st?st.c:'#CBD5E1',flexShrink:0,display:'inline-block'}}/>
-                      <span style={{fontSize:11,fontWeight:isSelected?700:400,color:isSelected?'#2563EB':C.text,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.name}</span>
-                      {status&&<span style={{fontSize:9,color:st?.t,fontWeight:700,flexShrink:0,background:st?.l,padding:'1px 4px',borderRadius:R.full,whiteSpace:'nowrap'}}>{st?.label}</span>}
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      <div ref={mapRef} style={{width:"100%",height:500,borderRadius:R.lg,border:"1px solid #E2E8F0",overflow:"hidden",zIndex:0}}/>
       {sel&&selSchool&&(
-        <Box style={{marginTop:14,padding:16,borderLeft:'4px solid '+(SM[getStatus(sel)]?.c||'#94A3B8')}}>
-          <div style={{display:'flex',flexWrap:'wrap',gap:16,alignItems:'flex-start'}}>
-            <div style={{flex:1,minWidth:200}}>
+        <Box style={{marginTop:14,padding:16,borderLeft:"4px solid "+(SM[getStatus(sel)]?.c||"#94A3B8")}}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:16,alignItems:"flex-start"}}>
+            <div style={{flex:1,minWidth:180}}>
               <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:4}}>{selSchool.name}</div>
-              {selSchool.type!=='office'&&TC[selSchool.type]&&<div style={{marginBottom:6}}><Pill bg={TC[selSchool.type].bg} tx={TC[selSchool.type].tx} bd={TC[selSchool.type].bd}>{TL[selSchool.type]}</Pill></div>}
+              {selSchool.type!=="office"&&TC[selSchool.type]&&<div style={{marginBottom:6}}><Pill bg={TC[selSchool.type].bg} tx={TC[selSchool.type].tx} bd={TC[selSchool.type].bd}>{TL[selSchool.type]}</Pill></div>}
               {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>📍 {selSchool.address}</div>}
-              {selSchool.phone&&<a href={'tel:'+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:'none'}}>{selSchool.phone}</a>}
+              {selSchool.phone&&<a href={"tel:"+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:"none"}}>{selSchool.phone}</a>}
             </div>
-            <div style={{flex:1,minWidth:200}}>
+            <div style={{flex:1,minWidth:180}}>
               {selRecap?(
                 <div>
                   <SBadge status={selRecap.status}/>
-                  {selRecap.note&&<div style={{fontSize:12,color:C.text,lineHeight:1.6,background:'#F0F9FF',borderLeft:'3px solid #2563EB',padding:'8px 10px',borderRadius:R.md,marginTop:8}}>{selRecap.note}</div>}
-                  {selRecap.resolved&&<div style={{marginTop:6}}><Pill bg='#F0FDF4' tx='#15803D' bd='#BBF7D0'>Resolved</Pill></div>}
+                  {selRecap.note&&<div style={{fontSize:12,color:C.text,lineHeight:1.6,background:"#F0F9FF",borderLeft:"3px solid #2563EB",padding:"8px 10px",borderRadius:R.md,marginTop:8}}>{selRecap.note}</div>}
+                  {selRecap.resolved&&<div style={{marginTop:6}}><Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">Resolved</Pill></div>}
                 </div>
-              ):<div style={{background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:R.md,padding:'8px 10px',fontSize:12,color:'#C2410C',fontWeight:600}}>No recap submitted today</div>}
+              ):<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"8px 10px",fontSize:12,color:"#C2410C",fontWeight:600}}>No recap submitted today</div>}
             </div>
+            <button onClick={()=>setSel(null)} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,padding:0,fontFamily:"inherit"}}>✕ Close</button>
           </div>
         </Box>
       )}
     </div>
   )
 }
+
 
 const EVENT_TYPES=[
   {id:"meeting",label:"Meeting",color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},
@@ -1539,7 +1556,7 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
               {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d} style={{padding:"10px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase"}}>{d}</div>)}
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
-              {Array.from({length:startDay}).map((_,i)=><div key={"e"+i} style={{minHeight:80,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA"}}/>)}
+              {Array.from({length:startDay}).map((_,i)=><div key={"e"+i} style={{minHeight:60,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA"}}/>)}
               {Array.from({length:days}).map((_,i)=>{
                 const d=i+1
                 const ds=dateStr(y,m,d)
@@ -1547,7 +1564,7 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
                 const isToday=ds===TODAY
                 const isSel=ds===selDate
                 return(
-                  <div key={d} onClick={()=>{setSelDate(isSel?null:ds);if(canManage&&dayEvents.length===0)openAdd(ds)}} style={{minHeight:80,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",padding:"6px 4px",cursor:"pointer",background:isSel?"#EFF6FF":isToday?"#FFFBEB":"#fff",position:"relative"}}>
+                  <div key={d} onClick={()=>{setSelDate(isSel?null:ds);if(canManage&&dayEvents.length===0)openAdd(ds)}} style={{minHeight:60,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",padding:"4px 3px",cursor:"pointer",background:isSel?"#EFF6FF":isToday?"#FFFBEB":"#fff",position:"relative"}}>
                     <div style={{width:24,height:24,borderRadius:"50%",background:isToday?"#2563EB":"transparent",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4}}>
                       <span style={{fontSize:12,fontWeight:isToday?800:500,color:isToday?"#fff":C.text}}>{d}</span>
                     </div>
