@@ -1,9 +1,37 @@
 import { useState, useEffect } from "react"
 import { supabase } from "./supabase.js"
-import { LayoutDashboard, PlusCircle, Building2, BarChart3, ShieldCheck, ClipboardList, BookOpen, LogOut, X, Check, CheckCircle, AlertCircle, Eye, EyeOff, Edit2, StickyNote, Plus, Printer, RefreshCw, Menu, CheckSquare, Calendar } from "lucide-react"
+import { LayoutDashboard, PlusCircle, Building2, BarChart3, ShieldCheck, ClipboardList, BookOpen, LogOut, X, Check, CheckCircle, AlertCircle, Eye, EyeOff, Edit2, StickyNote, Plus, Printer, RefreshCw, Menu, CheckSquare, Calendar, Map, CalendarDays } from "lucide-react"
 
-const SCHOOLS=[{id:"s1",name:"Adams High School",type:"hs"},{id:"s2",name:"Washington High School",type:"hs"},{id:"s3",name:"Riley High School",type:"hs"},{id:"s4",name:"Rise Up Academy",type:"hs"},{id:"s4b",name:"Studebaker",type:"hs"},{id:"s5",name:"Jackson Middle School",type:"ms"},{id:"s6",name:"Jefferson Traditional School",type:"ms"},{id:"s7",name:"LaSalle Academy",type:"ms"},{id:"s8",name:"Navarre",type:"ms"},{id:"s9",name:"Dickson Academy",type:"es"},{id:"s10",name:"Edison K-8 School",type:"es"},{id:"s11",name:"Lincoln Elementary",type:"es"},{id:"s12",name:"McKinley Elementary",type:"es"},{id:"s13",name:"Monroe Elementary",type:"es"},{id:"s14",name:"Muessel Elementary",type:"es"},{id:"s15",name:"Harrison Elementary",type:"es"},{id:"s16",name:"Coquillard Elementary",type:"es"},{id:"s17",name:"Darden Elementary",type:"es"},{id:"s18",name:"Nuner Fine Arts Academy",type:"es"},{id:"s19",name:"Swanson Traditional School",type:"es"},{id:"s20",name:"Wilson Elementary School",type:"es"},{id:"s21",name:"Marshall Traditional School",type:"es"},{id:"s22",name:"Marquette Montessori Academy",type:"es"},{id:"s23",name:"Clay International Academy",type:"es"},{id:"s24",name:"Kennedy Academy",type:"es"},{id:"s25",name:"Lafayette Early Childhood Center",type:"es"},{id:"s26",name:"Madison S.T.E.A.M. Academy",type:"es"}]
-const TL={hs:"High School",ms:"Middle School",es:"Elementary"}
+const SCHOOLS=[
+  {id:"s1",name:"Adams High School",type:"hs",address:"808 S. Twyckenham Dr, South Bend, IN 46615",phone:"(574) 393-5348"},
+  {id:"s3",name:"Riley High School",type:"hs",address:"1902 S. Fellows St, South Bend, IN 46613",phone:"(574) 393-5144"},
+  {id:"s2",name:"Washington High School",type:"hs",address:"4747 W. Washington Ave, South Bend, IN 46615",phone:"(574) 393-5547"},
+  {id:"s4",name:"Rise Up Academy",type:"hs",address:"740 N. Eddy St, South Bend, IN 46617",phone:"(574) 393-5000"},
+  {id:"s23",name:"Clay International Academy",type:"ms",address:"52900 Lily Rd, South Bend, IN 46637",phone:"(574) 393-4318"},
+  {id:"s9",name:"Dickson Academy",type:"ms",address:"4404 Elwood Ave, South Bend, IN 46628",phone:"(574) 393-3922"},
+  {id:"s10",name:"Edison K-8 School",type:"ms",address:"2701 Eisenhower Dr, South Bend, IN 46615",phone:"(574) 393-4424"},
+  {id:"s5",name:"Jackson Middle School",type:"ms",address:"5001 S. Miami St, South Bend, IN 46614",phone:"(574) 393-4521"},
+  {id:"s6",name:"Jefferson Traditional School",type:"ms",address:"528 S. Eddy St, South Bend, IN 46617",phone:"(574) 393-4119"},
+  {id:"s7",name:"LaSalle Academy",type:"ms",address:"2701 W. Elwood Ave, South Bend, IN 46628",phone:"(574) 393-4721"},
+  {id:"s8",name:"Navarre",type:"ms",address:"4702 W. Ford St, South Bend, IN 46619",phone:"(574) 393-4620"},
+  {id:"s16",name:"Coquillard Elementary",type:"es",address:"1245 N. Sheridan Ave, South Bend, IN 46628",phone:"(574) 393-2009"},
+  {id:"s17",name:"Darden Elementary",type:"es",address:"18645 Janet St, South Bend, IN 46637",phone:"(574) 393-2912"},
+  {id:"s15",name:"Harrison Elementary",type:"es",address:"3302 W. Western Ave, South Bend, IN 46619",phone:"(574) 393-3016"},
+  {id:"s24",name:"Kennedy Academy",type:"es",address:"609 N. Olive St, South Bend, IN 46628",phone:"(574) 393-3112"},
+  {id:"s25",name:"Lafayette Early Childhood Center",type:"es",address:"245 N. Lombardy Dr, South Bend, IN 46619",phone:"(574) 393-5862"},
+  {id:"s11",name:"Lincoln Elementary",type:"es",address:"1425 E. Calvert St, South Bend, IN 46613",phone:"(574) 393-2313"},
+  {id:"s26",name:"Madison S.T.E.A.M. Academy",type:"es",address:"832 N. Lafayette Blvd, South Bend, IN 46601",phone:"(574) 393-3213"},
+  {id:"s21",name:"Marshall Traditional School",type:"es",address:"1433 Byron Dr, South Bend, IN 46614",phone:"(574) 393-2111"},
+  {id:"s22",name:"Marquette Montessori Academy",type:"es",address:"1905 College St, South Bend, IN 46628",phone:"(574) 393-2410"},
+  {id:"s12",name:"McKinley Elementary",type:"es",address:"228 N. Greenlawn Ave, South Bend, IN 46617",phone:"(574) 393-3313"},
+  {id:"s13",name:"Monroe Elementary",type:"es",address:"312 E. Donmoyer Ave, South Bend, IN 46614",phone:"(574) 393-2511"},
+  {id:"s14",name:"Muessel Elementary",type:"es",address:"1021 Blaine St, South Bend, IN 46628",phone:"(574) 393-3411"},
+  {id:"s18",name:"Nuner Fine Arts Academy",type:"es",address:"2716 Pleasant St, South Bend, IN 46615",phone:"(574) 393-2614"},
+  {id:"s4b",name:"Studebaker",type:"es",address:"724 Dubail Ave, South Bend, IN 46614",phone:"(574) 393-6253"},
+  {id:"s19",name:"Swanson Traditional School",type:"es",address:"17677 Parker Dr, South Bend, IN 46635",phone:"(574) 393-2709"},
+  {id:"s20",name:"Wilson Elementary School",type:"es",address:"56660 Oak Rd, South Bend, IN 46619",phone:"(574) 393-3712"}
+]
+const TL={hs:"High School",ms:"Middle School",es:"Elementary School"}
 const TC={hs:{bg:"#FFF3E0",tx:"#E65100",bd:"#FFB74D"},ms:{bg:"#E8EAF6",tx:"#283593",bd:"#9FA8DA"},es:{bg:"#E8F5E9",tx:"#1B5E20",bd:"#81C784"}}
 const STATS=[{id:"green",label:"All Good",c:"#2E7D32",l:"#F1F8E9",b:"#AED581",t:"#33691E"},{id:"yellow",label:"Minor Issues",c:"#F57F17",l:"#FFFDE7",b:"#FFF176",t:"#F57F17"},{id:"red",label:"Major Problems",c:"#C62828",l:"#FFEBEE",b:"#EF9A9A",t:"#B71C1C"},{id:"partial",label:"Partial Service",c:"#6A1B9A",l:"#F3E5F5",b:"#CE93D8",t:"#6A1B9A"},{id:"delayed",label:"Delayed",c:"#00838F",l:"#E0F7FA",b:"#80DEEA",t:"#006064"},{id:"closed",label:"Closed",c:"#37474F",l:"#ECEFF1",b:"#B0BEC5",t:"#263238"}]
 const SM=Object.fromEntries(STATS.map(s=>[s.id,s]))
@@ -133,6 +161,7 @@ export default function App(){
   const [calloffs,setCalloffs]=useState(SC)
   const [directory,setDirectory]=useState(SD)
   const [supaUsers,setSupaUsers]=useState([])
+  const [events,setEvents]=useState([])
   const [dbReady,setDbReady]=useState(false)
   const [user,setUser]=useState(null)
   const [authLoading,setAuthLoading]=useState(true)
@@ -151,16 +180,18 @@ export default function App(){
 
   useEffect(()=>{
     async function loadData(){
-      const [r,co,d,su]=await Promise.all([
+      const [r,co,d,su,ev]=await Promise.all([
         supabase.from("recaps").select("*").order("created_at",{ascending:false}),
         supabase.from("calloffs").select("*").order("created_at",{ascending:false}),
         supabase.from("directory").select("*").order("name"),
-        supabase.from("app_users").select("*").order("name")
+        supabase.from("app_users").select("*").order("name"),
+        supabase.from("events").select("*").order("date")
       ])
       if(r.data&&r.data.length>0)setRecaps(r.data)
       if(co.data&&co.data.length>0)setCalloffs(co.data)
       if(d.data!==null)setDirectory(d.data)
       if(su.data)setSupaUsers(su.data)
+      if(ev&&ev.data)setEvents(ev.data)
       setDbReady(true)
     }
     loadData()
@@ -186,10 +217,12 @@ export default function App(){
     ...(perms.report?[{id:"report",label:"Monthly Report",short:"Report",I:BarChart3}]:[]),
     ...(perms.calloffs?[{id:"calloffs",label:"Call-Offs",short:"Calls",I:ClipboardList}]:[]),
     {id:"directory",label:"Directory",short:"Dir",I:BookOpen},
+    {id:"map",label:"School Map",short:"Map",I:Map},
+    {id:"events",label:"Meetings & Events",short:"Events",I:CalendarDays},
     ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
   ]
 
-  const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,go,sById,uById,ctx,isAdmin:perms.admin}
+  const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,events,setEvents,go,sById,uById,ctx,isAdmin:perms.admin}
 
   const PageEl=()=>{
     if(page==="dashboard")return <DashPage {...props}/>
@@ -198,6 +231,8 @@ export default function App(){
     if(page==="report") return <ReportPage {...props}/>
     if(page==="calloffs") return <CalloffsPage {...props}/>
     if(page==="directory")return <DirPage {...props}/>
+    if(page==="map")return <MapPage {...props}/>
+    if(page==="events")return <EventsPage {...props}/>
     if(page==="admin") return <AdminPage {...props}/>
     return null
   }
@@ -401,6 +436,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast}){
                     <div style={{display:"flex",gap:4}}>
                       {hn&&<button onClick={()=>tog(r.id)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:R.md,border:"1px solid #E2E8F0",cursor:"pointer",fontSize:11,fontWeight:600,background:no?"#EFF6FF":"#fff",color:no?"#2563EB":C.textMuted,fontFamily:"inherit"}}><StickyNote size={10}/>{no?"Hide":"Note"}</button>}
                       {needsResolve&&<button onClick={()=>setResolveId(r.id)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:R.md,border:"1px solid #BBF7D0",cursor:"pointer",fontSize:11,fontWeight:600,background:"#F0FDF4",color:"#15803D",fontFamily:"inherit"}}><CheckSquare size={10}/>Resolve</button>}
+                      {(isAdmin||r.created_by===user.id)&&<button onClick={()=>handleDeleteRecap(r)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:R.md,border:"1px solid #FECACA",cursor:"pointer",fontSize:11,fontWeight:600,background:"#FEF2F2",color:"#DC2626",fontFamily:"inherit"}}><X size={10}/>Delete</button>}
                     </div>
                   </div>
                 </Box>
@@ -449,6 +485,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast}){
                       <td style={{padding:"11px 14px",fontSize:12,color:C.textMuted,whiteSpace:"nowrap"}}>{isMultiDay?fd(r.date):ft(r.created_at)}</td>
                       <td style={{padding:"11px 14px"}}>
                         {needsResolve&&<button onClick={()=>setResolveId(r.id)} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:R.md,border:"1px solid #BBF7D0",cursor:"pointer",fontSize:11,fontWeight:600,background:"#F0FDF4",color:"#15803D",whiteSpace:"nowrap",fontFamily:"inherit"}}><CheckSquare size={11}/>Resolve</button>}
+                        {(isAdmin||r.created_by===user.id)&&<button onClick={()=>handleDeleteRecap(r)} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:R.md,border:"1px solid #FECACA",cursor:"pointer",fontSize:11,fontWeight:600,background:"#FEF2F2",color:"#DC2626",whiteSpace:"nowrap",fontFamily:"inherit",marginLeft:4}}><X size={11}/>Del</button>}
                       </td>
                     </tr>,
                     hn&&no&&<tr key={r.id+"n"} style={{borderBottom:"1px solid #F1F5F9",background:"#FAFFFE"}}><td colSpan={7} style={{padding:"0 14px 10px 28px"}}><div style={{padding:"8px 14px",borderRadius:R.md,fontSize:12,color:C.text,background:"#F0F9FF",borderLeft:"3px solid #2563EB",lineHeight:1.6}}>{r.note}</div></td></tr>
@@ -539,7 +576,7 @@ function SubmitPage({user,schools,setRecaps,toast}){
   )
 }
 
-function SchoolPage({ctx,schools,recaps,setRecaps,users,toast}){
+function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin}){
   const [sid,setSid]=useState(ctx?.school?.id||"")
   const [on,setOn]=useState(new Set())
   const [resolveId,setResolveId]=useState(null)
@@ -550,6 +587,14 @@ function SchoolPage({ctx,schools,recaps,setRecaps,users,toast}){
   const sn=role=>{const id=sch?.[`${role}_id`];return id?uById(id)?.name:null}
   const tog=id=>setOn(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n})
   const handleResolve=(rid,note)=>{setRecaps(p=>p.map(x=>x.id===rid?{...x,resolved:true,resolution_note:note,resolved_at:new Date().toISOString()}:x));toast.show("Issue marked as resolved!")}
+  const handleDeleteRecap=async(r)=>{
+    const canDelete=isAdmin||r.created_by===user.id
+    if(!canDelete){toast.show("You can only delete your own recaps.","error");return}
+    if(!window.confirm("Delete this recap?"))return
+    await supabase.from("recaps").delete().eq("id",r.id)
+    setRecaps(p=>p.filter(x=>x.id!==r.id))
+    toast.show("Recap deleted.")
+  }
 
   return(
     <div style={{padding:"24px 20px"}}>
@@ -581,6 +626,7 @@ function SchoolPage({ctx,schools,recaps,setRecaps,users,toast}){
                     {ai.map(i=><span key={i} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",color:C.textMuted,padding:"1px 7px",borderRadius:5,fontSize:11,fontWeight:600}}>{i}</span>)}
                     {hn&&<button onClick={()=>tog(r.id)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:R.md,border:"1px solid #E2E8F0",cursor:"pointer",fontSize:11,fontWeight:600,background:no?"#EFF6FF":"#fff",color:no?"#2563EB":C.textMuted,fontFamily:"inherit"}}><StickyNote size={10}/>{no?"Hide":"Note"}</button>}
                     {needsResolve&&<button onClick={()=>setResolveId(r.id)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:R.md,border:"1px solid #BBF7D0",cursor:"pointer",fontSize:11,fontWeight:600,background:"#F0FDF4",color:"#15803D",fontFamily:"inherit"}}><CheckSquare size={10}/>Resolve</button>}
+                    {(isAdmin||r.created_by===user.id)&&<button onClick={()=>handleDeleteRecap(r)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:R.md,border:"1px solid #FECACA",cursor:"pointer",fontSize:11,fontWeight:600,background:"#FEF2F2",color:"#DC2626",fontFamily:"inherit"}}><X size={10}/>Delete</button>}
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontSize:12,fontWeight:700,color:C.text}}>{uById(r.created_by)?.name||"--"}</div>
@@ -822,17 +868,19 @@ function CalloffStats({calloffs,schools,mobile}){
                 </div>
                 <span style={{fontWeight:900,fontSize:16,color:C.text,flexShrink:0}}>{row.total}</span>
               </div>
-              <div style={{display:"flex",gap:3,height:7,borderRadius:R.full,overflow:"hidden",marginBottom:8}}>
-                {row.calloff>0&&<div style={{flex:row.calloff,background:"#3B82F6"}}/>}
-                {row.sick>0&&<div style={{flex:row.sick,background:"#F59E0B"}}/>}
-                {row.ncns>0&&<div style={{flex:row.ncns,background:"#EF4444"}}/>}
-                {row.tardy>0&&<div style={{flex:row.tardy,background:"#F97316"}}/>}
-              </div>
-              <div style={{display:"flex",gap:14,fontSize:12,flexWrap:"wrap"}}>
-                {row.calloff>0&&<span style={{color:"#1D4ED8",fontWeight:700}}>Call-Off: {row.calloff}</span>}
-                {row.sick>0&&<span style={{color:"#B45309",fontWeight:700}}>Sick: {row.sick}</span>}
-                {row.ncns>0&&<span style={{color:"#DC2626",fontWeight:700}}>NCNS: {row.ncns}</span>}
-                {row.tardy>0&&<span style={{color:"#E65100",fontWeight:700}}>Tardy: {row.tardy}</span>}
+              <div style={{marginBottom:8}}>
+                <div style={{display:"flex",gap:3,height:10,borderRadius:R.full,overflow:"hidden",marginBottom:6}}>
+                  {row.calloff>0&&<div style={{flex:row.calloff,background:"#3B82F6"}}/>}
+                  {row.sick>0&&<div style={{flex:row.sick,background:"#F59E0B"}}/>}
+                  {row.ncns>0&&<div style={{flex:row.ncns,background:"#EF4444"}}/>}
+                  {row.tardy>0&&<div style={{flex:row.tardy,background:"#F97316"}}/>}
+                </div>
+                <div style={{display:"flex",gap:10,fontSize:12,flexWrap:"wrap"}}>
+                  {row.calloff>0&&<span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#3B82F6",flexShrink:0,display:"inline-block"}}/><span style={{color:"#1D4ED8",fontWeight:700}}>Call-Off: {row.calloff}</span></span>}
+                  {row.sick>0&&<span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#F59E0B",flexShrink:0,display:"inline-block"}}/><span style={{color:"#B45309",fontWeight:700}}>Sick: {row.sick}</span></span>}
+                  {row.ncns>0&&<span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#EF4444",flexShrink:0,display:"inline-block"}}/><span style={{color:"#DC2626",fontWeight:700}}>NCNS: {row.ncns}</span></span>}
+                  {row.tardy>0&&<span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#F97316",flexShrink:0,display:"inline-block"}}/><span style={{color:"#E65100",fontWeight:700}}>Tardy: {row.tardy}</span></span>}
+                </div>
               </div>
               {row.staff.length>0&&<div style={{fontSize:11,color:C.textLight,marginTop:4}}>Staff: {row.staff.join(", ")}</div>}
             </div>
@@ -863,7 +911,11 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
   const del=async e=>{if(window.confirm("Remove "+e.name+"?")){const{error}=await supabase.from("directory").delete().eq("id",e.id);if(error){toast.show("Could not delete: "+error.message,"error");return}setDirectory(p=>p.filter(x=>x.id!==e.id));toast.show(e.name+" removed successfully!")}}
   const roleMeta=id=>DIR_ROLES.find(r=>r.id===id)||{label:"Staff",color:C.textMuted,bg:C.bg}
   const toggleSchool=(sid)=>{const ids=form.school_ids||[];setForm(f=>({...f,school_ids:ids.includes(sid)?ids.filter(x=>x!==sid):[...ids,sid]}))}
-  const getSchoolNames=e=>{const ids=e.school_ids||[];if(!ids.length)return null;if(ids.length===1)return sById(ids[0])?.name||"--";return ids.length+" schools"}
+  const getSchoolNames=e=>{
+    const ids=e.school_ids||[]
+    if(!ids.length)return null
+    return ids.map(id=>sById(id)?.name).filter(Boolean).join(", ")
+  }
 
   return(
     <div style={{padding:"24px 20px",position:"relative"}}>
@@ -919,7 +971,14 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
                   <td style={{padding:"11px 14px",fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{e.name}</td>
                   <td style={{padding:"11px 14px",color:C.textMuted,fontSize:12}}>{e.position}</td>
                   <td style={{padding:"11px 14px"}}><Pill bg={rm.bg} tx={rm.color}>{roleLabel}</Pill></td>
-                  <td style={{padding:"11px 14px",fontSize:12,color:C.text,maxWidth:160}}>{schoolNames||<span style={{color:C.textLight}}>--</span>}</td>
+                  <td style={{padding:"11px 14px",fontSize:12,color:C.text,maxWidth:220}}>
+                    {(e.school_ids||[]).length>0?(
+                      <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+                        {(e.school_ids||[]).slice(0,2).map(id=>{const s=sById(id);const tc=s?TC[s.type]:null;return s?<span key={id} style={{background:tc?tc.bg:"#F8FAFC",color:tc?tc.tx:C.textMuted,border:"1px solid "+(tc?tc.bd:"#E2E8F0"),padding:"1px 7px",borderRadius:R.full,fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{s.name}</span>:null})}
+                        {(e.school_ids||[]).length>2&&<span style={{fontSize:11,color:C.textLight,alignSelf:"center"}}>+{(e.school_ids||[]).length-2} more</span>}
+                      </div>
+                    ):<span style={{color:C.textLight}}>--</span>}
+                  </td>
                   <td style={{padding:"11px 14px",whiteSpace:"nowrap"}}>{e.phone?<a href={"tel:"+e.phone} style={{color:C.primary,textDecoration:"none",fontSize:13,fontWeight:600}}>{e.phone}</a>:<span style={{color:C.textLight}}>--</span>}</td>
                   <td style={{padding:"11px 14px"}}>{e.email?<a href={"mailto:"+e.email} style={{color:C.primary,textDecoration:"none",fontSize:12}}>{e.email}</a>:<span style={{color:C.textLight}}>--</span>}</td>
                   <td style={{padding:"11px 14px"}}><Pill bg={e.is_active?"#F0FDF4":"#F1F5F9"} tx={e.is_active?"#15803D":C.textMuted}>{e.is_active?"Active":"Inactive"}</Pill></td>
@@ -1016,17 +1075,26 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
     setUserLoading(true);setUserErr("")
     try{
       if(userModal==="add"){
-        const {data,error}=await supabase.auth.signUp({
-          email:userForm.email,
-          password:userForm.password,
-        })
+        const {data,error}=await supabase.auth.signUp({email:userForm.email,password:userForm.password})
         if(error)throw error
         const userId=data.user?.id
         if(!userId)throw new Error("Could not create user")
-        await supabase.from("app_users").insert({id:userId,name:userForm.name,email:userForm.email,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:true})
-        toast.show("User created! They will receive a confirmation email.")
+        const newUser={id:userId,name:userForm.name,email:userForm.email,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:true}
+        await supabase.from("app_users").insert(newUser)
+        setSupaUsers(p=>[...p,newUser])
+        // Sync school assignments
+        if(userForm.school_ids?.length>0){
+          const roleKey=userForm.role+"_id"
+          setSchools(p=>p.map(s=>userForm.school_ids.includes(s.id)?{...s,[roleKey]:userId}:s))
+        }
+        toast.show("User created! They'll receive a confirmation email.")
       } else {
+        const updated={...userForm,id:userModal.id}
         await supabase.from("app_users").update({name:userForm.name,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:userForm.is_active}).eq("id",userModal.id)
+        setSupaUsers(p=>p.map(u=>u.id===userModal.id?{...u,...userForm}:u))
+        // Sync school assignments
+        const roleKey=userForm.role+"_id"
+        setSchools(p=>p.map(s=>userForm.school_ids.includes(s.id)?{...s,[roleKey]:userModal.id}:s))
         toast.show("User updated!")
       }
       loadUsers()
@@ -1148,6 +1216,314 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
           </div>
         </Box>}
       </div>}
+    </div>
+  )
+}
+
+const SCHOOL_COORDS={
+  "s1":{lat:41.6583,lng:-86.2285},  // 808 S. Twyckenham Dr
+  "s3":{lat:41.6612,lng:-86.2401},  // 1902 S. Fellows St
+  "s2":{lat:41.6889,lng:-86.3012},  // 4747 W. Washington Ave
+  "s4":{lat:41.6923,lng:-86.2523},  // 740 N. Eddy St
+  "s23":{lat:41.7389,lng:-86.2134}, // 52900 Lily Rd
+  "s9":{lat:41.6756,lng:-86.2934},  // 4404 Elwood Ave
+  "s10":{lat:41.6823,lng:-86.2312}, // 2701 Eisenhower Dr
+  "s5":{lat:41.6234,lng:-86.2256},  // 5001 S. Miami St
+  "s6":{lat:41.6712,lng:-86.2489},  // 528 S. Eddy St
+  "s7":{lat:41.6756,lng:-86.3023},  // 2701 W. Elwood Ave
+  "s8":{lat:41.6712,lng:-86.3089},  // 4702 W. Ford St
+  "s16":{lat:41.6978,lng:-86.2734}, // 1245 N. Sheridan Ave
+  "s17":{lat:41.7412,lng:-86.2023}, // 18645 Janet St
+  "s15":{lat:41.6812,lng:-86.3045}, // 3302 W. Western Ave
+  "s24":{lat:41.6934,lng:-86.2623}, // 609 N. Olive St
+  "s25":{lat:41.6756,lng:-86.3012}, // 245 N. Lombardy Dr
+  "s11":{lat:41.6634,lng:-86.2178}, // 1425 E. Calvert St
+  "s26":{lat:41.6889,lng:-86.2634}, // 832 N. Lafayette Blvd
+  "s21":{lat:41.6578,lng:-86.2434}, // 1433 Byron Dr
+  "s22":{lat:41.6756,lng:-86.2589}, // 1905 College St
+  "s12":{lat:41.6812,lng:-86.2734}, // 228 N. Greenlawn Ave
+  "s13":{lat:41.6534,lng:-86.2356}, // 312 E. Donmoyer Ave
+  "s14":{lat:41.6812,lng:-86.2845}, // 1021 Blaine St
+  "s18":{lat:41.6745,lng:-86.2312}, // 2716 Pleasant St
+  "s4b":{lat:41.6534,lng:-86.2478}, // 724 Dubail Ave
+  "s19":{lat:41.7312,lng:-86.1823}, // 17677 Parker Dr
+  "s20":{lat:41.6823,lng:-86.3156}  // 56660 Oak Rd
+},"s2":{lat:41.6758,lng:-86.2686},"s3":{lat:41.7012,lng:-86.2385},
+  "s4":{lat:41.6831,lng:-86.2312},"s4b":{lat:41.6701,lng:-86.2498},"s5":{lat:41.6923,lng:-86.2701},
+  "s6":{lat:41.6845,lng:-86.2634},"s7":{lat:41.6789,lng:-86.2543},"s8":{lat:41.6712,lng:-86.2389},
+  "s9":{lat:41.7034,lng:-86.2156},"s10":{lat:41.6923,lng:-86.2089},"s11":{lat:41.6678,lng:-86.2845},
+  "s12":{lat:41.6845,lng:-86.2923},"s13":{lat:41.6934,lng:-86.2812},"s14":{lat:41.7012,lng:-86.2634},
+  "s15":{lat:41.6756,lng:-86.2734},"s16":{lat:41.6867,lng:-86.2456},"s17":{lat:41.6923,lng:-86.2345},
+  "s18":{lat:41.7045,lng:-86.2523},"s19":{lat:41.6812,lng:-86.2812},"s20":{lat:41.6734,lng:-86.2634},
+  "s21":{lat:41.6956,lng:-86.2456},"s22":{lat:41.7078,lng:-86.2367},"s23":{lat:41.6889,lng:-86.2189},
+  "s24":{lat:41.6745,lng:-86.2189},"s25":{lat:41.6812,lng:-86.2078},"s26":{lat:41.6978,lng:-86.2978}
+}
+
+function MapPage({schools,recaps,sById}){
+  const today=TODAY
+  const todayRecaps=recaps.filter(r=>r.date===today)
+  const getStatus=sid=>{const r=todayRecaps.find(x=>x.school_id===sid);return r?r.status:null}
+  const getColor=status=>{if(!status)return"#94A3B8";return SM[status]?.c||"#94A3B8"}
+  const [sel,setSel]=useState(null)
+  const selSchool=schools.find(s=>s.id===sel)
+  const selRecap=sel?todayRecaps.find(r=>r.school_id===sel):null
+
+  // Simple SVG map centered on South Bend
+  const mapW=800,mapH=500
+  const minLat=41.660,maxLat=41.715,minLng=-86.310,maxLng=-86.195
+  const toX=lng=>((lng-minLng)/(maxLng-minLng))*mapW
+  const toY=lat=>((maxLat-lat)/(maxLat-minLat))*mapH
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="School Map" subtitle="South Bend Community School Corporation - click a school to see today's status"/>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.textMuted}}><span style={{width:12,height:12,borderRadius:"50%",background:"#94A3B8",display:"inline-block"}}/> No recap</div>
+        {STATS.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.textMuted}}><span style={{width:12,height:12,borderRadius:"50%",background:s.c,display:"inline-block"}}/>{s.label}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:sel?"1fr 280px":"1fr",gap:16,alignItems:"start"}}>
+        <Box style={{padding:0,overflow:"hidden"}}>
+          <svg viewBox={`0 0 ${mapW} ${mapH}`} style={{width:"100%",height:"auto",display:"block",background:"#F0F4F8"}}>
+            <rect width={mapW} height={mapH} fill="#E8F0F8"/>
+            <text x={mapW/2} y={24} textAnchor="middle" fontSize={14} fill="#94A3B8" fontWeight={600}>South Bend, Indiana</text>
+            {schools.map(s=>{
+              const coords=SCHOOL_COORDS[s.id]
+              if(!coords)return null
+              const x=toX(coords.lng),y=toY(coords.lat)
+              const status=getStatus(s.id)
+              const color=getColor(status)
+              const tc=TC[s.type]
+              return(
+                <g key={s.id} onClick={()=>setSel(sel===s.id?null:s.id)} style={{cursor:"pointer"}}>
+                  <circle cx={x} cy={y} r={sel===s.id?16:12} fill={color} stroke="#fff" strokeWidth={sel===s.id?3:2} opacity={.9}/>
+                  <text x={x} y={y+4} textAnchor="middle" fontSize={8} fill="#fff" fontWeight={800}>{s.type.toUpperCase()}</text>
+                  {sel===s.id&&<text x={x} y={y-20} textAnchor="middle" fontSize={9} fill="#1E293B" fontWeight={700} style={{pointerEvents:"none"}}>{s.name.split(" ").slice(0,2).join(" ")}</text>}
+                </g>
+              )
+            })}
+          </svg>
+        </Box>
+        {sel&&selSchool&&(
+          <Box style={{padding:18}}>
+            <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:4}}>{selSchool.name}</div>
+            <div style={{marginBottom:8}}><Pill bg={TC[selSchool.type]?.bg} tx={TC[selSchool.type]?.tx} bd={TC[selSchool.type]?.bd}>{TL[selSchool.type]}</Pill></div>
+            {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>{selSchool.address}</div>}
+            {selSchool.phone&&<a href={"tel:"+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:"none",display:"block",marginBottom:12}}>{selSchool.phone}</a>}
+            {selRecap?(
+              <>
+                <div style={{marginBottom:8}}><SBadge status={selRecap.status}/></div>
+                {selRecap.note&&<div style={{fontSize:13,color:C.text,lineHeight:1.6,background:"#F0F9FF",borderLeft:"3px solid #2563EB",padding:"8px 12px",borderRadius:R.md,marginBottom:8}}>{selRecap.note}</div>}
+                {selRecap.resolved&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">Resolved</Pill>}
+              </>
+            ):<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"10px 12px",fontSize:12,color:"#C2410C",fontWeight:600}}>No recap submitted today</div>}
+            <button onClick={()=>setSel(null)} style={{marginTop:14,background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,padding:0,fontFamily:"inherit"}}>✕ Close</button>
+          </Box>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const EVENT_TYPES=[
+  {id:"meeting",label:"Meeting",color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},
+  {id:"training",label:"Training",color:"#7C3AED",bg:"#F5F3FF",bd:"#DDD6FE"},
+  {id:"inspection",label:"Inspection",color:"#D97706",bg:"#FFFBEB",bd:"#FDE68A"},
+  {id:"event",label:"Event",color:"#059669",bg:"#ECFDF5",bd:"#A7F3D0"},
+  {id:"deadline",label:"Deadline",color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"},
+  {id:"other",label:"Other",color:"#64748B",bg:"#F8FAFC",bd:"#E2E8F0"}
+]
+const ET=Object.fromEntries(EVENT_TYPES.map(e=>[e.id,e]))
+
+function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
+  const [view,setView]=useState("calendar")
+  const [modal,setModal]=useState(null)
+  const [form,setForm]=useState({title:"",date:"",time:"",end_time:"",type:"meeting",location:"",school_ids:[],description:"",created_by:""})
+  const [selDate,setSelDate]=useState(null)
+  const [curMonth,setCurMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()}})
+  const canManage=isAdmin||user.role==="director"||user.role==="supervisor"
+
+  const openAdd=(date="")=>{
+    setForm({title:"",date:date||TODAY,time:"08:00",end_time:"09:00",type:"meeting",location:"",school_ids:[],description:"",created_by:user.id})
+    setModal("add")
+  }
+  const openEdit=e=>{setForm({...e,school_ids:e.school_ids||[]});setModal(e)}
+
+  const save=async()=>{
+    if(!form.title.trim()||!form.date){return}
+    if(modal==="add"){
+      const ne={id:uid(),...form,title:form.title.trim(),created_by:user.id,created_at:new Date().toISOString()}
+      setEvents(p=>[...p,ne].sort((a,b)=>a.date.localeCompare(b.date)))
+      await supabase.from("events").insert(ne)
+      toast.show("Event created!")
+    } else {
+      const up={...form,title:form.title.trim()}
+      setEvents(p=>p.map(e=>e.id===modal.id?{...e,...up}:e))
+      await supabase.from("events").update(up).eq("id",modal.id)
+      toast.show("Event updated!")
+    }
+    setModal(null)
+  }
+
+  const del=async e=>{
+    if(!window.confirm("Delete \""+e.title+"\"?"))return
+    setEvents(p=>p.filter(x=>x.id!==e.id))
+    await supabase.from("events").delete().eq("id",e.id)
+    toast.show("Event deleted.")
+  }
+
+  const toggleSchool=sid=>{const ids=form.school_ids||[];setForm(f=>({...f,school_ids:ids.includes(sid)?ids.filter(x=>x!==sid):[...ids,sid]}))}
+
+  // Calendar helpers
+  const daysInMonth=(y,m)=>new Date(y,m+1,0).getDate()
+  const firstDay=(y,m)=>new Date(y,m,1).getDay()
+  const {y,m}=curMonth
+  const days=daysInMonth(y,m)
+  const startDay=firstDay(y,m)
+  const monthStr=new Date(y,m,1).toLocaleDateString("en-US",{month:"long",year:"numeric"})
+  const pad=n=>String(n).padStart(2,"0")
+  const dateStr=(y,m,d)=>y+"-"+pad(m+1)+"-"+pad(d)
+  const eventsOnDay=d=>events.filter(e=>e.date===dateStr(y,m,d))
+  const upcomingEvents=events.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date))
+  const pastEvents=events.filter(e=>e.date<TODAY).sort((a,b)=>b.date.localeCompare(a.date))
+
+  const EventCard=({e,compact=false})=>{
+    const et=ET[e.type]||ET.other
+    const sNames=(e.school_ids||[]).map(id=>schools.find(s=>s.id===id)?.name).filter(Boolean)
+    return(
+      <div style={{background:"#fff",border:"1px solid #E2E8F0",borderRadius:R.md,padding:compact?"10px 12px":"14px 16px",borderLeft:"4px solid "+et.color}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:compact?13:14,color:C.text,marginBottom:4}}>{e.title}</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+              <Pill bg={et.bg} tx={et.color} bd={et.bd}>{et.label}</Pill>
+              <span style={{fontSize:11,color:C.textMuted,display:"flex",alignItems:"center",gap:3}}>
+                <Calendar size={10}/>{fd(e.date)}{e.time&&" at "+e.time}{e.end_time&&" - "+e.end_time}
+              </span>
+            </div>
+            {e.location&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>📍 {e.location}</div>}
+            {sNames.length>0&&<div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>Schools: {sNames.join(", ")}</div>}
+            {e.description&&!compact&&<div style={{fontSize:12,color:C.textMuted,lineHeight:1.6,marginTop:6}}>{e.description}</div>}
+          </div>
+          {canManage&&<div style={{display:"flex",gap:4,flexShrink:0}}>
+            <button onClick={()=>openEdit(e)} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#1565C0",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>Edit</button>
+            <button onClick={()=>del(e)} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>Del</button>
+          </div>}
+        </div>
+      </div>
+    )
+  }
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="Meetings & Events" subtitle="Schedule and track meetings, training, and events"
+        action={canManage&&<Btn onClick={()=>openAdd()}><Plus size={14}/> Add Event</Btn>}/>
+
+      <TabBar tabs={[{id:"calendar",label:"Calendar"},{id:"upcoming",label:"Upcoming"},{id:"past",label:"Past"}]} active={view} set={setView}/>
+
+      {modal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
+          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:520,boxShadow:SH.lg,marginTop:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>{modal==="add"?"Add Event":"Edit Event"}</span>
+              <button onClick={()=>setModal(null)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
+            </div>
+            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14,maxHeight:"75vh",overflowY:"auto"}}>
+              <div><L>Title *</L><Inp value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Monthly Team Meeting"/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                <div><L>Date *</L><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={{...inp}}/></div>
+                <div><L>Start Time</L><input type="time" value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))} style={{...inp}}/></div>
+                <div><L>End Time</L><input type="time" value={form.end_time} onChange={e=>setForm(f=>({...f,end_time:e.target.value}))} style={{...inp}}/></div>
+              </div>
+              <div><L>Type</L>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+                  {EVENT_TYPES.map(t=>{const a=form.type===t.id;return(
+                    <button key={t.id} onClick={()=>setForm(f=>({...f,type:t.id}))} style={{padding:"8px 6px",borderRadius:R.md,border:"2px solid "+(a?t.color:C.border),background:a?t.bg:"#fff",color:a?t.color:C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>{t.label}</button>
+                  )})}
+                </div>
+              </div>
+              <div><L>Location</L><Inp value={form.location} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. District Office, Room 204"/></div>
+              <div>
+                <L>Schools (optional)</L>
+                <div style={{border:"1px solid #E2E8F0",borderRadius:R.md,overflow:"hidden",maxHeight:150,overflowY:"auto"}}>
+                  {Object.entries(TL).map(([type,typelabel])=>[
+                    <div key={type} style={{padding:"4px 10px",background:"#F8FAFC",fontSize:10,fontWeight:700,color:C.textMuted,textTransform:"uppercase"}}>{typelabel}</div>,
+                    ...schools.filter(s=>s.type===type).map(s=>{
+                      const checked=(form.school_ids||[]).includes(s.id)
+                      return <label key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",cursor:"pointer",borderTop:"1px solid #F1F5F9",background:checked?"#EFF6FF":"#fff"}}>
+                        <input type="checkbox" checked={checked} onChange={()=>toggleSchool(s.id)} style={{width:13,height:13,accentColor:"#2563EB"}}/>
+                        <span style={{fontSize:12,color:checked?"#2563EB":C.text,fontWeight:checked?600:400}}>{s.name}</span>
+                      </label>
+                    })
+                  ])}
+                </div>
+              </div>
+              <div><L>Description / Notes</L><textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={3} placeholder="Add any details, agenda items, or notes..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+              <div style={{display:"flex",gap:10,paddingTop:4}}>
+                <Btn onClick={()=>setModal(null)} variant="outline">Cancel</Btn>
+                <Btn onClick={save} disabled={!form.title.trim()||!form.date}>Save Event</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view==="calendar"&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+            <button onClick={()=>setCurMonth(p=>{const d=new Date(p.y,p.m-1);return{y:d.getFullYear(),m:d.getMonth()}})} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit"}}>← Prev</button>
+            <span style={{fontWeight:800,fontSize:18,color:C.text}}>{monthStr}</span>
+            <button onClick={()=>setCurMonth(p=>{const d=new Date(p.y,p.m+1);return{y:d.getFullYear(),m:d.getMonth()}})} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit"}}>Next →</button>
+          </div>
+          <Box style={{padding:0,overflow:"hidden"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"2px solid #E2E8F0"}}>
+              {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d} style={{padding:"10px 4px",textAlign:"center",fontSize:11,fontWeight:700,color:C.textLight,textTransform:"uppercase"}}>{d}</div>)}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+              {Array.from({length:startDay}).map((_,i)=><div key={"e"+i} style={{minHeight:80,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA"}}/>)}
+              {Array.from({length:days}).map((_,i)=>{
+                const d=i+1
+                const ds=dateStr(y,m,d)
+                const dayEvents=eventsOnDay(d)
+                const isToday=ds===TODAY
+                const isSel=ds===selDate
+                return(
+                  <div key={d} onClick={()=>{setSelDate(isSel?null:ds);if(canManage&&dayEvents.length===0)openAdd(ds)}} style={{minHeight:80,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",padding:"6px 4px",cursor:"pointer",background:isSel?"#EFF6FF":isToday?"#FFFBEB":"#fff",position:"relative"}}>
+                    <div style={{width:24,height:24,borderRadius:"50%",background:isToday?"#2563EB":"transparent",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:isToday?800:500,color:isToday?"#fff":C.text}}>{d}</span>
+                    </div>
+                    {dayEvents.slice(0,2).map(e=>{const et=ET[e.type]||ET.other;return(
+                      <div key={e.id} style={{background:et.bg,color:et.color,fontSize:10,fontWeight:700,padding:"2px 5px",borderRadius:4,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",borderLeft:"2px solid "+et.color}}>{e.title}</div>
+                    )})}
+                    {dayEvents.length>2&&<div style={{fontSize:9,color:C.textLight,fontWeight:600}}>+{dayEvents.length-2} more</div>}
+                  </div>
+                )
+              })}
+            </div>
+          </Box>
+          {selDate&&events.filter(e=>e.date===selDate).length>0&&(
+            <div style={{marginTop:16}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.textMuted,marginBottom:8}}>{fd(selDate)}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {events.filter(e=>e.date===selDate).map(e=><EventCard key={e.id} e={e}/>)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {view==="upcoming"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {upcomingEvents.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No upcoming events. {canManage&&<button onClick={()=>openAdd()} style={{background:"none",border:"none",cursor:"pointer",color:C.primary,fontWeight:700,fontFamily:"inherit"}}>Add one?</button>}</Box>
+          :upcomingEvents.map(e=><EventCard key={e.id} e={e}/>)}
+        </div>
+      )}
+
+      {view==="past"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {pastEvents.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No past events.</Box>
+          :pastEvents.map(e=><EventCard key={e.id} e={e}/>)}
+        </div>
+      )}
     </div>
   )
 }
