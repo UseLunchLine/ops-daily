@@ -1307,8 +1307,8 @@ function MapPage({schools,recaps}){
   const getColor=status=>status?SM[status]?.c||"#94A3B8":"#94A3B8"
 
   const makeIcon=(L,color,name="")=>L.divIcon({
-    html:"<div style='display:flex;flex-direction:column;align-items:center;gap:2px;'><div style='width:13px;height:13px;border-radius:50%;background:"+color+";border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.4);'></div>"+(name?"<div style='background:rgba(255,255,255,0.92);border:1px solid rgba(0,0,0,.12);border-radius:3px;padding:1px 4px;font-size:9px;font-weight:700;white-space:nowrap;color:#1E293B;max-width:90px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.15);'>"+name+"</div>":"")+"</div>",
-    className:"",iconSize:[100,36],iconAnchor:[50,13]
+    html:"<div style='display:flex;flex-direction:column;align-items:center;'><div style='background:"+color+";color:#fff;font-size:10px;font-weight:800;padding:3px 7px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.35);border:1.5px solid rgba(255,255,255,0.8);max-width:110px;overflow:hidden;text-overflow:ellipsis;text-align:center;font-family:system-ui,sans-serif;'>"+name+"</div><div style='width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid "+color+";'></div></div>",
+    className:"",iconSize:[120,40],iconAnchor:[60,40]
   })
 
   React.useEffect(()=>{
@@ -1329,7 +1329,8 @@ function MapPage({schools,recaps}){
         if(!coords)return
         const status=todayRecaps.find(r=>r.school_id===s.id)?.status
         const color=getColor(status)
-        const marker=L.marker([coords.lat,coords.lng],{icon:makeIcon(L,color)})
+        const shortName=s.name.replace(/Elementary|Academy|Traditional|Montessori|International|Early Childhood Center|S\.T\.E\.A\.M\.|Fine Arts/g,"").replace(/\s+/g," ").trim()
+        const marker=L.marker([coords.lat,coords.lng],{icon:makeIcon(L,color,shortName)})
           .addTo(map)
           .bindTooltip(s.name,{permanent:false,direction:"top"})
           .bindPopup("<b>"+s.name+"</b><br/><small>"+(s.address||"")+"</small>"+(s.phone?"<br/><a href='tel:"+s.phone+"'>"+s.phone+"</a>":"")+"<br/><small style='color:"+color+"'>"+(status?SM[status]?.label:"No recap today")+"</small>")
