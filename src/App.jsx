@@ -336,7 +336,7 @@ function Login(){
   )
 }
 
-function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast}){
+function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
   const [dateFrom,setDateFrom]=useState(TODAY)
   const [dateTo,setDateTo]=useState(TODAY)
   const [fSchool,setFSchool]=useState("")
@@ -363,6 +363,15 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast}){
     setRecaps(p=>p.map(x=>x.id===rid?{...x,resolved:true,resolution_note:note}:x))
     await supabase.from("recaps").update({resolved:true,resolution_note:note}).eq("id",rid)
     toast.show("Issue marked as resolved!")
+  }
+
+  const handleDeleteRecap=async(r)=>{
+    const canDelete=isAdmin||r.created_by===user?.id
+    if(!canDelete){toast.show("You can only delete your own recaps.","error");return}
+    if(!window.confirm("Delete this recap?"))return
+    await supabase.from("recaps").delete().eq("id",r.id)
+    setRecaps(p=>p.filter(x=>x.id!==r.id))
+    toast.show("Recap deleted.")
   }
 
   const reset=()=>{setDateFrom(TODAY);setDateTo(TODAY);setFSchool("");setFStatus("")}
