@@ -29,10 +29,11 @@ const SCHOOLS=[
   {id:"s18",name:"Nuner Fine Arts Academy",type:"es",address:"2716 Pleasant St, South Bend, IN 46615",phone:"(574) 393-2614"},
   {id:"s4b",name:"Studebaker",type:"es",address:"724 Dubail Ave, South Bend, IN 46614",phone:"(574) 393-6253"},
   {id:"s19",name:"Swanson Traditional School",type:"es",address:"17677 Parker Dr, South Bend, IN 46635",phone:"(574) 393-2709"},
-  {id:"s20",name:"Wilson Elementary School",type:"es",address:"56660 Oak Rd, South Bend, IN 46619",phone:"(574) 393-3712"}
+  {id:"s20",name:"Wilson Elementary School",type:"es",address:"56660 Oak Rd, South Bend, IN 46619",phone:"(574) 393-3712"},
+  {id:"s27",name:"Brown (Home Office)",type:"office",address:"737 Beale Street, South Bend, IN 46637",phone:"(574) 393-5000"}
 ]
-const TL={hs:"High School",ms:"Middle School",es:"Elementary School"}
-const TC={hs:{bg:"#FFF3E0",tx:"#E65100",bd:"#FFB74D"},ms:{bg:"#E8EAF6",tx:"#283593",bd:"#9FA8DA"},es:{bg:"#E8F5E9",tx:"#1B5E20",bd:"#81C784"}}
+const TL={hs:"High School",ms:"Middle School",es:"Elementary School",office:"Office"}
+const TC={hs:{bg:"#FFF3E0",tx:"#E65100",bd:"#FFB74D"},ms:{bg:"#E8EAF6",tx:"#283593",bd:"#9FA8DA"},es:{bg:"#E8F5E9",tx:"#1B5E20",bd:"#81C784"},office:{bg:"#F1F5F9",tx:"#334155",bd:"#CBD5E1"}}
 const STATS=[{id:"green",label:"All Good",c:"#2E7D32",l:"#F1F8E9",b:"#AED581",t:"#33691E"},{id:"yellow",label:"Minor Issues",c:"#F57F17",l:"#FFFDE7",b:"#FFF176",t:"#F57F17"},{id:"red",label:"Major Problems",c:"#C62828",l:"#FFEBEE",b:"#EF9A9A",t:"#B71C1C"},{id:"partial",label:"Partial Service",c:"#6A1B9A",l:"#F3E5F5",b:"#CE93D8",t:"#6A1B9A"},{id:"delayed",label:"Delayed",c:"#00838F",l:"#E0F7FA",b:"#80DEEA",t:"#006064"},{id:"closed",label:"Closed",c:"#37474F",l:"#ECEFF1",b:"#B0BEC5",t:"#263238"}]
 const SM=Object.fromEntries(STATS.map(s=>[s.id,s]))
 const ISS=[{id:"food_out",label:"Ran out of food"},{id:"low_food",label:"Low food supply"},{id:"staffing",label:"Staffing issue"},{id:"equip",label:"Equipment issue"},{id:"delivery",label:"Delivery problem"},{id:"health",label:"Health/Safety"},{id:"power",label:"Power/Utilities"},{id:"behavior",label:"Student behavior"},{id:"pest",label:"Pest/Sanitation"},{id:"weather",label:"Weather-related"}]
@@ -913,8 +914,19 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
   const openEdit=e=>{setForm({...e,school_ids:e.school_ids||[]});setModal(e)}
   const save=async()=>{
     if(!form.name.trim())return
-    if(modal==="add"){const newEntry={...form,id:uid(),name:form.name.trim()};setDirectory(p=>[...p,newEntry]);await supabase.from("directory").insert(newEntry);toast.show("Staff member added!")}
-    else{const updated={...form,id:modal.id,name:form.name.trim()};setDirectory(p=>p.map(e=>e.id===modal.id?updated:e));await supabase.from("directory").update(updated).eq("id",modal.id);toast.show("Staff member updated!")}
+    if(modal==="add"){
+      const newEntry={...form,id:uid(),name:form.name.trim(),school_ids:form.school_ids||[],is_temp:form.is_temp||false,temp_end_date:form.temp_end_date||""}
+      const{error}=await supabase.from("directory").insert(newEntry)
+      if(error){toast.show("Save failed: "+error.message,"error");return}
+      setDirectory(p=>[...p,newEntry])
+      toast.show("Staff member added!")
+    } else {
+      const updated={...form,id:modal.id,name:form.name.trim(),school_ids:form.school_ids||[]}
+      const{error}=await supabase.from("directory").update(updated).eq("id",modal.id)
+      if(error){toast.show("Save failed: "+error.message,"error");return}
+      setDirectory(p=>p.map(e=>e.id===modal.id?updated:e))
+      toast.show("Staff member updated!")
+    }
     setModal(null)
   }
   const del=async e=>{if(window.confirm("Remove "+e.name+"?")){const{error}=await supabase.from("directory").delete().eq("id",e.id);if(error){toast.show("Could not delete: "+error.message,"error");return}setDirectory(p=>p.filter(x=>x.id!==e.id));toast.show(e.name+" removed successfully!")}}
@@ -1083,28 +1095,25 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
     if(userModal==="add"&&userForm.password.length<6){setUserErr("Password must be at least 6 characters.");return}
     setUserLoading(true);setUserErr("")
     try{
+      let userId=userModal==="add"?null:userModal.id
       if(userModal==="add"){
         const {data,error}=await supabase.auth.signUp({email:userForm.email,password:userForm.password})
         if(error)throw error
-        const userId=data.user?.id
+        userId=data.user?.id
         if(!userId)throw new Error("Could not create user")
-        const newUser={id:userId,name:userForm.name,email:userForm.email,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:true}
+        const newUser={id:userId,name:userForm.name,email:userForm.email,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids||[],is_active:true}
         await supabase.from("app_users").insert(newUser)
         setSupaUsers(p=>[...p,newUser])
-        // Sync school assignments
-        if(userForm.school_ids?.length>0){
-          const roleKey=userForm.role+"_id"
-          setSchools(p=>p.map(s=>userForm.school_ids.includes(s.id)?{...s,[roleKey]:userId}:s))
-        }
         toast.show("User created! They'll receive a confirmation email.")
       } else {
-        const updated={...userForm,id:userModal.id}
-        await supabase.from("app_users").update({name:userForm.name,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids,is_active:userForm.is_active}).eq("id",userModal.id)
-        setSupaUsers(p=>p.map(u=>u.id===userModal.id?{...u,...userForm}:u))
-        // Sync school assignments
-        const roleKey=userForm.role+"_id"
-        setSchools(p=>p.map(s=>userForm.school_ids.includes(s.id)?{...s,[roleKey]:userModal.id}:s))
+        await supabase.from("app_users").update({name:userForm.name,role:userForm.role,phone:userForm.phone,school_ids:userForm.school_ids||[],is_active:userForm.is_active}).eq("id",userId)
+        setSupaUsers(p=>p.map(u=>u.id===userId?{...u,...userForm}:u))
         toast.show("User updated!")
+      }
+      // Sync school assignments - update schools state
+      const roleKey=userForm.role+"_id"
+      if(["chef","director","supervisor"].includes(userForm.role)&&(userForm.school_ids||[]).length>0){
+        setSchools(p=>p.map(s=>(userForm.school_ids||[]).includes(s.id)?{...s,[roleKey]:userId}:s))
       }
       loadUsers()
       setUserModal(null)
@@ -1256,69 +1265,104 @@ const SCHOOL_COORDS={
   "s18":{lat:41.6745,lng:-86.2312}, // 2716 Pleasant St
   "s4b":{lat:41.6534,lng:-86.2478}, // 724 Dubail Ave
   "s19":{lat:41.7312,lng:-86.1823}, // 17677 Parker Dr
-  "s20":{lat:41.6823,lng:-86.3156}  // 56660 Oak Rd
+  "s20":{lat:41.6823,lng:-86.3156},  // 56660 Oak Rd
+  "s27":{lat:41.6845,lng:-86.2523}   // 737 Beale St - Home Office
 }
 
 function MapPage({schools,recaps,sById}){
   const today=TODAY
   const todayRecaps=recaps.filter(r=>r.date===today)
   const getStatus=sid=>{const r=todayRecaps.find(x=>x.school_id===sid);return r?r.status:null}
-  const getColor=status=>{if(!status)return"#94A3B8";return SM[status]?.c||"#94A3B8"}
   const [sel,setSel]=useState(null)
   const selSchool=schools.find(s=>s.id===sel)
   const selRecap=sel?todayRecaps.find(r=>r.school_id===sel):null
+  const coords=sel?SCHOOL_COORDS[sel]:null
 
-  // Simple SVG map centered on South Bend
-  const mapW=800,mapH=500
-  const minLat=41.660,maxLat=41.715,minLng=-86.310,maxLng=-86.195
-  const toX=lng=>((lng-minLng)/(maxLng-minLng))*mapW
-  const toY=lat=>((maxLat-lat)/(maxLat-minLat))*mapH
+  const statusCount=STATS.reduce((a,s)=>({...a,[s.id]:todayRecaps.filter(r=>r.status===s.id).length}),{})
+  const noRecap=schools.filter(s=>s.type!=="office"&&!todayRecaps.find(r=>r.school_id===s.id)).length
+
+  const getMapUrl=(school)=>{
+    const addr=encodeURIComponent(school.address||school.name+", South Bend, IN")
+    return "https://maps.google.com/maps?q="+addr+"&t=&z=15&ie=UTF8&iwloc=&output=embed"
+  }
+
+  const districtMapUrl="https://maps.google.com/maps?q=South+Bend+Community+School+Corporation,+South+Bend,+IN&t=&z=12&ie=UTF8&iwloc=&output=embed"
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="School Map" subtitle="South Bend Community School Corporation - click a school to see today's status"/>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.textMuted}}><span style={{width:12,height:12,borderRadius:"50%",background:"#94A3B8",display:"inline-block"}}/> No recap</div>
-        {STATS.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.textMuted}}><span style={{width:12,height:12,borderRadius:"50%",background:s.c,display:"inline-block"}}/>{s.label}</div>)}
+      <PageHeader title="School Map" subtitle="South Bend Community School Corporation — click a school for details and location"/>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:20}}>
+        <div style={{background:"#F8FAFC",borderRadius:R.lg,padding:"12px 16px",border:"1px solid #E2E8F0",textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:900,color:C.text}}>{schools.filter(s=>s.type!=="office").length}</div>
+          <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>Total Schools</div>
+        </div>
+        {STATS.slice(0,3).map(s=>(
+          <div key={s.id} style={{background:s.l,borderRadius:R.lg,padding:"12px 16px",border:"1px solid "+s.b,textAlign:"center"}}>
+            <div style={{fontSize:24,fontWeight:900,color:s.c}}>{statusCount[s.id]||0}</div>
+            <div style={{fontSize:11,fontWeight:600,color:s.t,marginTop:2}}>{s.label}</div>
+          </div>
+        ))}
+        <div style={{background:"#F8FAFC",borderRadius:R.lg,padding:"12px 16px",border:"1px solid #E2E8F0",textAlign:"center"}}>
+          <div style={{fontSize:24,fontWeight:900,color:"#94A3B8"}}>{noRecap}</div>
+          <div style={{fontSize:11,fontWeight:600,color:C.textMuted,marginTop:2}}>No Recap Yet</div>
+        </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:sel?"1fr 280px":"1fr",gap:16,alignItems:"start"}}>
-        <Box style={{padding:0,overflow:"hidden"}}>
-          <svg viewBox={`0 0 ${mapW} ${mapH}`} style={{width:"100%",height:"auto",display:"block",background:"#F0F4F8"}}>
-            <rect width={mapW} height={mapH} fill="#E8F0F8"/>
-            <text x={mapW/2} y={24} textAnchor="middle" fontSize={14} fill="#94A3B8" fontWeight={600}>South Bend, Indiana</text>
-            {schools.map(s=>{
-              const coords=SCHOOL_COORDS[s.id]
-              if(!coords)return null
-              const x=toX(coords.lng),y=toY(coords.lat)
-              const status=getStatus(s.id)
-              const color=getColor(status)
-              const tc=TC[s.type]
-              return(
-                <g key={s.id} onClick={()=>setSel(sel===s.id?null:s.id)} style={{cursor:"pointer"}}>
-                  <circle cx={x} cy={y} r={sel===s.id?16:12} fill={color} stroke="#fff" strokeWidth={sel===s.id?3:2} opacity={.9}/>
-                  <text x={x} y={y+4} textAnchor="middle" fontSize={8} fill="#fff" fontWeight={800}>{s.type.toUpperCase()}</text>
-                  {sel===s.id&&<text x={x} y={y-20} textAnchor="middle" fontSize={9} fill="#1E293B" fontWeight={700} style={{pointerEvents:"none"}}>{s.name.split(" ").slice(0,2).join(" ")}</text>}
-                </g>
-              )
-            })}
-          </svg>
+
+      <div style={{display:"grid",gridTemplateColumns:sel?"1fr 340px":"1fr 340px",gap:16,alignItems:"start"}}>
+        <Box style={{padding:0,overflow:"hidden",borderRadius:R.lg}}>
+          <iframe
+            src={sel&&coords?getMapUrl(selSchool):districtMapUrl}
+            width="100%" height="480"
+            style={{border:0,display:"block"}}
+            allowFullScreen loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            title="School Map"
+          />
         </Box>
-        {sel&&selSchool&&(
-          <Box style={{padding:18}}>
-            <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:4}}>{selSchool.name}</div>
-            <div style={{marginBottom:8}}><Pill bg={TC[selSchool.type]?.bg} tx={TC[selSchool.type]?.tx} bd={TC[selSchool.type]?.bd}>{TL[selSchool.type]}</Pill></div>
-            {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>{selSchool.address}</div>}
-            {selSchool.phone&&<a href={"tel:"+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:"none",display:"block",marginBottom:12}}>{selSchool.phone}</a>}
-            {selRecap?(
-              <>
-                <div style={{marginBottom:8}}><SBadge status={selRecap.status}/></div>
-                {selRecap.note&&<div style={{fontSize:13,color:C.text,lineHeight:1.6,background:"#F0F9FF",borderLeft:"3px solid #2563EB",padding:"8px 12px",borderRadius:R.md,marginBottom:8}}>{selRecap.note}</div>}
-                {selRecap.resolved&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">Resolved</Pill>}
-              </>
-            ):<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"10px 12px",fontSize:12,color:"#C2410C",fontWeight:600}}>No recap submitted today</div>}
-            <button onClick={()=>setSel(null)} style={{marginTop:14,background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,padding:0,fontFamily:"inherit"}}>✕ Close</button>
-          </Box>
-        )}
+
+        <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:480,overflowY:"auto"}}>
+          {sel&&selSchool&&(
+            <Box style={{padding:16,marginBottom:4,borderLeft:"4px solid "+(SM[getStatus(sel)]?.c||"#94A3B8")}}>
+              <div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:4}}>{selSchool.name}</div>
+              {selSchool.type!=="office"&&<div style={{marginBottom:6}}><Pill bg={TC[selSchool.type]?.bg||"#F1F5F9"} tx={TC[selSchool.type]?.tx||"#334155"} bd={TC[selSchool.type]?.bd||"#CBD5E1"}>{TL[selSchool.type]||selSchool.type}</Pill></div>}
+              {selSchool.address&&<div style={{fontSize:12,color:C.textMuted,marginBottom:6}}>📍 {selSchool.address}</div>}
+              {selSchool.phone&&<a href={"tel:"+selSchool.phone} style={{fontSize:13,color:C.primary,fontWeight:700,textDecoration:"none",display:"block",marginBottom:10}}>{selSchool.phone}</a>}
+              {selRecap?(
+                <div>
+                  <SBadge status={selRecap.status}/>
+                  {selRecap.note&&<div style={{fontSize:12,color:C.text,lineHeight:1.6,background:"#F0F9FF",borderLeft:"3px solid #2563EB",padding:"8px 10px",borderRadius:R.md,marginTop:8}}>{selRecap.note}</div>}
+                  {selRecap.resolved&&<div style={{marginTop:6}}><Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">Resolved</Pill></div>}
+                </div>
+              ):<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"8px 10px",fontSize:12,color:"#C2410C",fontWeight:600}}>No recap today</div>}
+              <button onClick={()=>setSel(null)} style={{marginTop:10,background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,padding:0,fontFamily:"inherit"}}>✕ Clear</button>
+            </Box>
+          )}
+
+          <div style={{fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:".06em",padding:"4px 2px"}}>All Schools — click to view on map</div>
+
+          {Object.entries(TL).map(([type,typelabel])=>{
+            const typeSchools=schools.filter(s=>s.type===type)
+            if(!typeSchools.length)return null
+            return(
+              <div key={type}>
+                <div style={{fontSize:10,fontWeight:700,color:C.textLight,textTransform:"uppercase",padding:"4px 2px",marginTop:4}}>{typelabel}</div>
+                {typeSchools.map(s=>{
+                  const status=getStatus(s.id)
+                  const st=SM[status]
+                  const isSelected=sel===s.id
+                  return(
+                    <button key={s.id} onClick={()=>setSel(isSelected?null:s.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:R.md,border:"1px solid "+(isSelected?"#BFDBFE":"#F1F5F9"),background:isSelected?"#EFF6FF":"#fff",cursor:"pointer",marginBottom:2,fontFamily:"inherit",textAlign:"left"}}>
+                      <span style={{width:10,height:10,borderRadius:"50%",background:st?st.c:"#94A3B8",flexShrink:0,display:"inline-block"}}/>
+                      <span style={{fontSize:12,fontWeight:isSelected?700:500,color:isSelected?"#2563EB":C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span>
+                      {status&&<span style={{fontSize:10,color:st?.t,fontWeight:700,flexShrink:0}}>{st?.label}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
