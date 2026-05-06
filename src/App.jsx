@@ -260,6 +260,7 @@ export default function App(){
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"events",label:"Meetings & Events",short:"Events",I:CalendarDays},
     {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
+    {id:"inbox",label:"Inbox",short:"Inbox",I:StickyNote},
     ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
   ]
 
@@ -276,6 +277,7 @@ export default function App(){
     if(page==="events")return <EventsPage {...props}/>
     if(page==="kitchen")return <KitchenPage {...props}/>
     if(page==="announcements")return <KitchenPage {...props} kmAnnouncementsOnly={true}/>
+    if(page==="inbox")return <InboxPage {...props}/>
     if(page==="admin") return <AdminPage {...props}/>
     return null
   }
@@ -1950,7 +1952,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       {/* CALENDAR - KM sees events */}
       {tab==="calendar"&&isKM&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"10px 14px",fontSize:13,color:"#1D4ED8"}}>📅 All meetings and events scheduled for your school by Admin, Directors and Supervisors.</div>
+          
           {events.filter(e=>!e.school_ids?.length||e.school_ids.includes(mySchool?.id)).length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📅</div><div style={{fontWeight:700}}>No upcoming events.</div></Box>
           ):events.filter(e=>!e.school_ids?.length||e.school_ids.includes(mySchool?.id)).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
@@ -1976,13 +1978,16 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
           {myMessages.length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📬</div><div style={{fontWeight:700}}>No messages yet.</div><div style={{fontSize:13,color:C.textLight,marginTop:6}}>Messages from Admin, Directors and Supervisors will appear here.</div></Box>
           ):myMessages.map(msg=>(
-            <Box key={msg.id} style={{padding:14,borderLeft:"3px solid #2563EB"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                <span style={{fontWeight:700,fontSize:13,color:C.text}}>{msg.from_name||"Staff"}</span>
-                <span style={{fontSize:11,color:C.textLight}}>{ft(msg.created_at)}</span>
-              </div>
-              <div style={{fontSize:13,color:C.textMuted,lineHeight:1.6}}>{msg.body}</div>
-            </Box>
+            <KitchenMessageCard key={msg.id} msg={msg} user={user} onReply={async(body)=>{
+              const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,to_school_id:msg.to_school_id,body:"↩ Re: "+msg.body.slice(0,30)+"...\n\n"+body,created_at:new Date().toISOString(),read:false,reply_to:msg.id}
+              await supabase.from("kitchen_messages").insert(nm)
+              setMessages(p=>[nm,...p])
+              toast.show("Reply sent!")
+            }} onAck={async()=>{
+              await supabase.from("kitchen_messages").update({read:true}).eq("id",msg.id)
+              setMessages(p=>p.map(x=>x.id===msg.id?{...x,read:true}:x))
+              toast.show("Acknowledged!")
+            }}/>
           ))}
         </div>
       )}
@@ -2095,5 +2100,106 @@ function KitchenIssueCard({issue,schools,canManage,onResolve}){
         </div>
       )}
     </Box>
+  )
+}
+
+function KitchenMessageCard({msg,user,onReply,onAck}){
+  const [showReply,setShowReply]=useState(false)
+  const [replyText,setReplyText]=useState("")
+  const isOwn=msg.from_user_id===user.id
+  return(
+    <Box style={{padding:14,borderLeft:"3px solid "+(msg.read?"#E2E8F0":"#2563EB"),background:msg.read?"#FAFAFA":"#fff"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontWeight:700,fontSize:13,color:C.text}}>{msg.from_name||"Staff"}</span>
+          {!msg.read&&!isOwn&&<span style={{background:"#2563EB",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:R.full}}>NEW</span>}
+        </div>
+        <span style={{fontSize:11,color:C.textLight}}>{ft(msg.created_at)}</span>
+      </div>
+      <div style={{fontSize:13,color:C.text,lineHeight:1.6,marginBottom:10,whiteSpace:"pre-wrap"}}>{msg.body}</div>
+      {!isOwn&&(
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {!msg.read&&<button onClick={onAck} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:R.md,border:"1px solid #BBF7D0",background:"#F0FDF4",color:"#15803D",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}><Check size={11}/>Acknowledge</button>}
+          <button onClick={()=>setShowReply(v=>!v)} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:R.md,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↩ Reply</button>
+        </div>
+      )}
+      {showReply&&(
+        <div style={{marginTop:10,background:"#F8FAFC",borderRadius:R.md,padding:12}}>
+          <textarea value={replyText} onChange={e=>setReplyText(e.target.value)} rows={3} placeholder="Type your reply..." style={{...inp,resize:"vertical",marginBottom:8}}/>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>setShowReply(false)} variant="outline" sm>Cancel</Btn>
+            <Btn onClick={()=>{onReply(replyText);setReplyText("");setShowReply(false)}} disabled={!replyText.trim()} sm>Send Reply</Btn>
+          </div>
+        </div>
+      )}
+    </Box>
+  )
+}
+
+function InboxPage({user,schools,supaUsers,toast}){
+  const [messages,setMessages]=useState([])
+  const [msgModal,setMsgModal]=useState(false)
+  const [msgForm,setMsgForm]=useState({to_school_id:"",body:""})
+  const canSend=["admin","director","supervisor","chef"].includes(user.role)
+
+  useEffect(()=>{
+    supabase.from("kitchen_messages").select("*").order("created_at",{ascending:false}).then(({data})=>{if(data)setMessages(data)})
+  },[])
+
+  const sendMessage=async()=>{
+    if(!msgForm.body.trim())return
+    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,to_school_id:msgForm.to_school_id||null,body:msgForm.body.trim(),created_at:new Date().toISOString(),read:false}
+    await supabase.from("kitchen_messages").insert(nm)
+    setMessages(p=>[nm,...p])
+    setMsgForm({to_school_id:"",body:""})
+    setMsgModal(false)
+    toast.show("Message sent!")
+  }
+
+  const unread=messages.filter(m=>!m.read&&m.from_user_id!==user.id).length
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="Inbox" subtitle={unread>0?unread+" unread message"+(unread!==1?"s":""):"All messages"} action={canSend&&<Btn onClick={()=>setMsgModal(true)}><Plus size={14}/> Message Kitchen</Btn>}/>
+
+      {msgModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
+          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Send Message to Kitchen</span>
+              <button onClick={()=>setMsgModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
+            </div>
+            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
+              <div><L>Send To</L><SG schools={schools} value={msgForm.to_school_id} onChange={e=>setMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
+              <div><L>Message *</L><textarea value={msgForm.body} onChange={e=>setMsgForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Type your message..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+              <div style={{display:"flex",gap:10}}><Btn onClick={()=>setMsgModal(false)} variant="outline">Cancel</Btn><Btn onClick={sendMessage} disabled={!msgForm.body.trim()}>Send</Btn></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {messages.length===0?(
+          <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📬</div><div style={{fontWeight:700}}>No messages yet.</div></Box>
+        ):messages.map(msg=>{
+          const sch=schools.find(s=>s.id===msg.to_school_id)
+          const isOwn=msg.from_user_id===user.id
+          return(
+            <Box key={msg.id} style={{padding:14,borderLeft:"3px solid "+(msg.read||isOwn?"#E2E8F0":"#2563EB"),background:msg.read||isOwn?"#FAFAFA":"#fff"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:700,fontSize:13,color:C.text}}>{isOwn?"You":msg.from_name||"Staff"}</span>
+                  <span style={{fontSize:11,color:C.textMuted}}>→ {sch?.name||"All Kitchens"}</span>
+                  {!msg.read&&!isOwn&&<span style={{background:"#2563EB",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:R.full}}>NEW</span>}
+                  {msg.read&&!isOwn&&<span style={{background:"#F0FDF4",color:"#15803D",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:R.full}}>✓ Acknowledged</span>}
+                </div>
+                <span style={{fontSize:11,color:C.textLight,flexShrink:0}}>{ft(msg.created_at)}</span>
+              </div>
+              <div style={{fontSize:13,color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{msg.body}</div>
+            </Box>
+          )
+        })}
+      </div>
+    </div>
   )
 }
