@@ -223,7 +223,7 @@ export default function App(){
   const navItems=isKM?[
     {id:"kitchen",label:"Kitchen Hub",short:"Hub",I:ClipboardList},
     {id:"directory",label:"Directory",short:"Dir",I:BookOpen},
-    {id:"events",label:"Announcements",short:"News",I:CalendarDays},
+    {id:"announcements",label:"Announcements",short:"News",I:CalendarDays},
   ]:[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
     {id:"submit",label:"Submit Recap",short:"Submit",I:PlusCircle},
@@ -249,6 +249,7 @@ export default function App(){
     if(page==="map")return <MapPage {...props}/>
     if(page==="events")return <EventsPage {...props}/>
     if(page==="kitchen")return <KitchenPage {...props}/>
+    if(page==="announcements")return <KitchenPage {...props} kmAnnouncementsOnly={true}/>
     if(page==="admin") return <AdminPage {...props}/>
     return null
   }
@@ -260,18 +261,18 @@ export default function App(){
         <Toast msg={toast.msg} type={toast.type}/>
         <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:SH.sm}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <img src="/logo.png" alt="Ops Daily" style={{height:28,objectFit:"contain"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:28,height:28,borderRadius:8,background:"#111",border:"2.5px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}><div style={{width:14,height:14,borderRadius:"50%",border:"2.5px solid #fff",background:"transparent"}}></div></div><span style={{fontWeight:900,fontSize:15,letterSpacing:"-.3px"}}><span style={{color:"#111"}}>OPS</span><span style={{color:"#3B82F6"}}>DAILY</span></span></div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={async()=>{await supabase.auth.signOut()}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:7}}><LogOut size={14}/></button></div>
         </div>
         <div style={{padding:"12px 14px"}}><PageEl/></div>
         <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,overflowX:"auto",boxShadow:"0 -2px 8px rgba(0,0,0,.06)",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
-          <div style={{display:"flex",minWidth:"max-content"}}>
+          <div style={{display:"flex",width:"100%"}}>
             {navItems.map(({id,short,I})=>{const a=page===id;return(
-              <button key={id} onClick={()=>go(id)} style={{minWidth:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"9px 4px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:9,fontWeight:700,fontFamily:"inherit"}}>
-                <I size={17}/>{short}
+              <button key={id} onClick={()=>go(id)} style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"8px 2px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:8,fontWeight:700,fontFamily:"inherit"}}>
+                <I size={15}/><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{short}</span>
               </button>
-            )})}
+            )})
           </div>
         </div>
       </div>
@@ -285,7 +286,7 @@ export default function App(){
       <aside style={{width:sideOpen?220:60,transition:"width .2s",background:"#fff",borderRight:"1px solid #E2E8F0",display:"flex",flexDirection:"column",flexShrink:0,position:"sticky",top:0,height:"100vh",overflow:"hidden",boxShadow:"2px 0 8px rgba(0,0,0,.04)"}}>
         <div style={{height:60,display:"flex",alignItems:"center",padding:"0 12px",gap:10,borderBottom:"1px solid #E2E8F0",flexShrink:0}}>
           <button onClick={()=>setSideOpen(v=>!v)} style={{width:36,height:36,borderRadius:R.md,background:"#F8FAFC",border:"1px solid #E2E8F0",color:C.textMuted,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Menu size={16}/></button>
-          {sideOpen&&<img src="/logo.png" alt="Ops Daily" style={{height:22,objectFit:"contain",maxWidth:140}}/>}
+          {sideOpen&&<div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:22,height:22,borderRadius:6,background:"#111",border:"2px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:10,height:10,borderRadius:"50%",border:"2px solid #fff"}}></div></div><span style={{fontWeight:900,fontSize:13,letterSpacing:"-.3px"}}><span style={{color:"#111"}}>OPS</span><span style={{color:"#3B82F6"}}>DAILY</span></span></div>}
         </div>
         <nav style={{flex:1,padding:"10px 8px",display:"flex",flexDirection:"column",gap:1,overflowY:"auto"}}>
           {navItems.map(({id,label,I})=>{
@@ -327,7 +328,7 @@ function Login(){
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#EFF6FF 0%,#F5F3FF 100%)",padding:16,fontFamily:"system-ui,sans-serif"}}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{width:56,height:56,borderRadius:16,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",boxShadow:"0 8px 24px rgba(37,99,235,.3)"}}><span style={{color:"#fff",fontWeight:900,fontSize:22}}>O</span></div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",gap:10}}><div style={{width:52,height:52,borderRadius:14,background:"#111",border:"3px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 24px rgba(59,130,246,.3)"}}><div style={{width:24,height:24,borderRadius:"50%",border:"3px solid #fff",background:"transparent"}}></div></div></div>
           <h1 style={{fontSize:26,fontWeight:900,color:C.text,margin:"0 0 4px"}}>Ops Daily</h1>
           <p style={{fontSize:13,color:C.textMuted,margin:0}}>South Bend Community School Corporation</p>
         </div>
@@ -397,7 +398,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn>}/>
 
-      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(3,1fr)",gap:10,marginBottom:20}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
         {[{label:"Total Recaps",val:totalShown,color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},{label:"All Good",val:goodShown,color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{label:"Need Attention",val:issueShown,color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"}].map(c=>(
           <div key={c.label} style={{background:c.bg,borderRadius:R.lg,padding:"16px 18px",border:"1px solid "+c.bd}}>
             <div style={{fontSize:28,fontWeight:900,color:c.color,lineHeight:1}}>{c.val}</div>
@@ -1658,96 +1659,130 @@ const KITCHEN_ISSUE_TYPES=[
   {id:"other",label:"Other Issue",icon:"📋",color:"#64748B",bg:"#F8FAFC"},
 ]
 const KIT=Object.fromEntries(KITCHEN_ISSUE_TYPES.map(t=>[t.id,t]))
+const ANN_TYPES={
+  general:{label:"General",color:"#2563EB",bg:"#EFF6FF"},
+  weather:{label:"Weather Delay",color:"#0891B2",bg:"#E0F2FE"},
+  closure:{label:"Closure",color:"#DC2626",bg:"#FEF2F2"},
+  coverage:{label:"Coverage Needed",color:"#15803D",bg:"#F0FDF4"},
+  training:{label:"Training",color:"#7C3AED",bg:"#F5F3FF"},
+  urgent:{label:"Urgent",color:"#B45309",bg:"#FFFBEB"},
+}
 
-function KitchenPage({user,schools,events,supaUsers,directory,isAdmin,toast,recaps}){
-  const [tab,setTab]=useState("report")
+function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=false}){
+  const isKM=user.role==="kitchen_manager"
+  const canManageAll=["admin","director","supervisor","chef"].includes(user.role)
+
+  // If KM accessed via announcements route, show announcements only
+  const [tab,setTab]=useState(kmAnnouncementsOnly?"announcements":isKM?"report":"issues")
   const [issues,setIssues]=useState([])
   const [announcements,setAnnouncements]=useState([])
+  const [messages,setMessages]=useState([])
   const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
-  const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",school_ids:[]})
+  const [annForm,setAnnForm]=useState({title:"",body:"",type:"general"})
+  const [msgForm,setMsgForm]=useState({to_school_id:"",body:""})
   const [annModal,setAnnModal]=useState(false)
+  const [msgModal,setMsgModal]=useState(false)
   const [loading,setLoading]=useState(false)
   const [mobile,setMobile]=useState(window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
-  // Get user's assigned school
   const userSchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
   const mySchool=schools.find(s=>userSchoolIds.includes(s.id))
-  const canManageAll=["admin","director","supervisor","chef"].includes(user.role)
 
-  useEffect(()=>{loadIssues();loadAnnouncements()},[])
+  useEffect(()=>{loadIssues();loadAnnouncements();loadMessages()},[])
 
   const loadIssues=async()=>{
     const{data}=await supabase.from("kitchen_issues").select("*").order("created_at",{ascending:false})
     if(data)setIssues(data)
   }
-
   const loadAnnouncements=async()=>{
     const{data}=await supabase.from("announcements").select("*").order("created_at",{ascending:false})
     if(data)setAnnouncements(data)
+  }
+  const loadMessages=async()=>{
+    const{data}=await supabase.from("kitchen_messages").select("*").order("created_at",{ascending:false})
+    if(data)setMessages(data)
   }
 
   const submitIssue=async()=>{
     if(!form.title.trim()){toast.show("Please add a title.","error");return}
     const schoolId=canManageAll?form.school_id:(mySchool?.id||"")
-    if(!schoolId){toast.show("No school assigned to your account.","error");return}
+    if(!schoolId){toast.show("No school assigned.","error");return}
     setLoading(true)
-    const newIssue={id:uid(),type:form.type,title:form.title.trim(),description:form.description.trim(),priority:form.priority,school_id:schoolId,status:"open",created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString(),resolved:false,resolution_note:""}
-    const{error}=await supabase.from("kitchen_issues").insert(newIssue)
-    if(error){toast.show("Failed to submit: "+error.message,"error");setLoading(false);return}
-    setIssues(p=>[newIssue,...p])
+    const ni={id:uid(),type:form.type,title:form.title.trim(),description:form.description.trim(),priority:form.priority,school_id:schoolId,created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString(),resolved:false,resolution_note:""}
+    const{error}=await supabase.from("kitchen_issues").insert(ni)
+    if(error){toast.show("Failed: "+error.message,"error");setLoading(false);return}
+    setIssues(p=>[ni,...p])
     setForm({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
-    toast.show("Issue reported successfully!")
+    toast.show("Issue reported!")
     setLoading(false)
   }
 
-  const resolveIssue=async(issue,note="")=>{
-    await supabase.from("kitchen_issues").update({resolved:true,status:"resolved",resolution_note:note,resolved_at:new Date().toISOString()}).eq("id",issue.id)
-    setIssues(p=>p.map(x=>x.id===issue.id?{...x,resolved:true,status:"resolved",resolution_note:note}:x))
+  const resolveIssue=async(issue,note)=>{
+    await supabase.from("kitchen_issues").update({resolved:true,resolution_note:note,resolved_at:new Date().toISOString()}).eq("id",issue.id)
+    setIssues(p=>p.map(x=>x.id===issue.id?{...x,resolved:true,resolution_note:note}:x))
     toast.show("Issue resolved!")
   }
 
   const submitAnn=async()=>{
-    if(!annForm.title.trim()){return}
+    if(!annForm.title.trim())return
     const na={id:uid(),...annForm,title:annForm.title.trim(),created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString()}
     await supabase.from("announcements").insert(na)
     setAnnouncements(p=>[na,...p])
-    setAnnForm({title:"",body:"",type:"general",school_ids:[]})
+    setAnnForm({title:"",body:"",type:"general"})
     setAnnModal(false)
     toast.show("Announcement posted!")
   }
 
-  const deleteAnn=async(id)=>{
-    if(!window.confirm("Delete this announcement?"))return
-    await supabase.from("announcements").delete().eq("id",id)
-    setAnnouncements(p=>p.filter(x=>x.id!==id))
-    toast.show("Announcement deleted.")
+  const sendMessage=async()=>{
+    if(!msgForm.body.trim())return
+    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,to_school_id:msgForm.to_school_id||null,body:msgForm.body.trim(),created_at:new Date().toISOString(),read:false}
+    await supabase.from("kitchen_messages").insert(nm)
+    setMessages(p=>[nm,...p])
+    setMsgForm({to_school_id:"",body:""})
+    setMsgModal(false)
+    toast.show("Message sent!")
   }
 
   const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
   const openIssues=myIssues.filter(i=>!i.resolved)
   const resolvedIssues=myIssues.filter(i=>i.resolved)
+  const myMessages=isKM?messages.filter(m=>!m.to_school_id||userSchoolIds.includes(m.to_school_id)):messages
 
-  const ANN_TYPES={
-    general:{label:"General",color:"#2563EB",bg:"#EFF6FF"},
-    weather:{label:"Weather Delay",color:"#0891B2",bg:"#E0F7FA"},
-    closure:{label:"Closure",color:"#DC2626",bg:"#FEF2F2"},
-    coverage:{label:"Coverage Needed",color:"#15803D",bg:"#F0FDF4"},
-    training:{label:"Training",color:"#7C3AED",bg:"#F5F3FF"},
-    urgent:{label:"Urgent",color:"#B45309",bg:"#FFFBEB"},
-  }
+  // KM tabs: Report, Announcements, Inbox
+  // Others: Issues, Announcements, Send Message
+  const kmTabs=[{id:"report",label:"Report Issue"},{id:"announcements",label:"Announcements"}]
+  const staffTabs=[{id:"issues",label:"Open Issues"+(openIssues.length>0?" ("+openIssues.length+")":"")},{id:"resolved",label:"Resolved"},{id:"announcements",label:"Announcements"},{id:"messages",label:"Messages"}]
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Kitchen Hub" subtitle={canManageAll?"District-wide kitchen issues and announcements":"Report issues and view announcements for your kitchen"}
-        action={canManageAll&&<Btn onClick={()=>setAnnModal(true)}><Plus size={14}/> Post Announcement</Btn>}/>
+      <PageHeader
+        title="Kitchen Hub"
+        subtitle={isKM?(mySchool?.name||"Your Kitchen"):"District Kitchen Issues & Communications"}
+        action={
+          <div style={{display:"flex",gap:8}}>
+            {canManageAll&&<Btn onClick={()=>setAnnModal(true)} sm><Plus size={13}/> Announcement</Btn>}
+            {canManageAll&&<Btn onClick={()=>setMsgModal(true)} variant="outline" sm><Plus size={13}/> Message Kitchen</Btn>}
+          </div>
+        }
+      />
 
-      {/* Stats for managers */}
+      {isKM&&announcements.length>0&&(
+        <div style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.lg,padding:"14px 20px",marginBottom:20,display:"flex",alignItems:"center",gap:14,boxShadow:"0 4px 12px rgba(37,99,235,.3)",cursor:"pointer"}} onClick={()=>setTab("announcements")}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>📢</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:800,fontSize:13,color:"#fff",marginBottom:2}}>{announcements[0].title}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.75)"}}>Latest announcement · tap to see all {announcements.length}</div>
+          </div>
+          <div style={{color:"rgba(255,255,255,.6)",fontSize:20}}>›</div>
+        </div>
+      )}
+
       {canManageAll&&(
         <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(4,1fr)",gap:10,marginBottom:20}}>
           <div style={{background:"#FEF2F2",borderRadius:R.lg,padding:"14px 16px",border:"1px solid #FECACA",textAlign:"center"}}>
             <div style={{fontSize:26,fontWeight:900,color:"#DC2626"}}>{openIssues.filter(i=>i.priority==="urgent").length}</div>
-            <div style={{fontSize:11,fontWeight:600,color:"#B91C1C",marginTop:3}}>Urgent Issues</div>
+            <div style={{fontSize:11,fontWeight:600,color:"#B91C1C",marginTop:3}}>Urgent</div>
           </div>
           <div style={{background:"#FFF7ED",borderRadius:R.lg,padding:"14px 16px",border:"1px solid #FED7AA",textAlign:"center"}}>
             <div style={{fontSize:26,fontWeight:900,color:"#C2410C"}}>{openIssues.length}</div>
@@ -1758,31 +1793,26 @@ function KitchenPage({user,schools,events,supaUsers,directory,isAdmin,toast,reca
             <div style={{fontSize:11,fontWeight:600,color:"#14532D",marginTop:3}}>Resolved</div>
           </div>
           <div style={{background:"#EFF6FF",borderRadius:R.lg,padding:"14px 16px",border:"1px solid #BFDBFE",textAlign:"center"}}>
-            <div style={{fontSize:26,fontWeight:900,color:"#1D4ED8"}}>{announcements.length}</div>
-            <div style={{fontSize:11,fontWeight:600,color:"#1E40AF",marginTop:3}}>Announcements</div>
+            <div style={{fontSize:26,fontWeight:900,color:"#1D4ED8"}}>{[...new Set(openIssues.map(i=>i.school_id))].length}</div>
+            <div style={{fontSize:11,fontWeight:600,color:"#1E40AF",marginTop:3}}>Schools Affected</div>
           </div>
         </div>
       )}
 
-      <TabBar tabs={[{id:"report",label:"Report Issue"},{id:"open",label:"Open Issues"+(openIssues.length>0?" ("+openIssues.length+")":"")},{id:"resolved",label:"Resolved"},{id:"announcements",label:"Announcements"}]} active={tab} set={setTab}/>
+      <TabBar tabs={isKM?kmTabs:staffTabs} active={tab} set={setTab}/>
 
-      {/* REPORT ISSUE */}
-      {tab==="report"&&(
-        <div style={{maxWidth:600,display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"12px 16px",fontSize:13,color:"#92400E",display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:18}}>⏰</span>
-            <span><strong>Reminder:</strong> Time off requests must still be submitted on the kitchen computer time clock system. This form is only for operational issues.</span>
+      {/* REPORT ISSUE - KM only */}
+      {tab==="report"&&isKM&&(
+        <div style={{maxWidth:580,display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"12px 16px",fontSize:13,color:"#92400E",display:"flex",gap:10}}>
+            <span style={{fontSize:18,flexShrink:0}}>⏰</span>
+            <span><strong>Reminder:</strong> Time off requests must still be submitted on the kitchen computer time clock system. This form is for operational issues only.</span>
           </div>
+          {mySchool&&<div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#0369A1"}}>📍 Reporting for: {mySchool.name}</div>}
           <Box style={{display:"flex",flexDirection:"column",gap:14}}>
-            {canManageAll&&(
-              <div><L>School</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></div>
-            )}
-            {!canManageAll&&mySchool&&(
-              <div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#0369A1"}}>📍 Reporting for: {mySchool.name}</div>
-            )}
             <div>
               <L>Issue Type</L>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7}}>
                 {KITCHEN_ISSUE_TYPES.map(t=>{const a=form.type===t.id;return(
                   <button key={t.id} onClick={()=>setForm(f=>({...f,type:t.id}))} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:R.md,border:"2px solid "+(a?t.color:C.border),background:a?t.bg:"#fff",color:a?t.color:C.textMuted,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",textAlign:"left"}}>
                     <span style={{fontSize:16}}>{t.icon}</span>{t.label}
@@ -1795,53 +1825,51 @@ function KitchenPage({user,schools,events,supaUsers,directory,isAdmin,toast,reca
             <div>
               <L>Priority</L>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                {[{id:"low",l:"Low",c:"#16A34A",bg:"#F0FDF4"},{id:"normal",l:"Normal",c:"#2563EB",bg:"#EFF6FF"},{id:"urgent",l:"Urgent",c:"#DC2626",bg:"#FEF2F2"}].map(p=>{const a=form.priority===p.id;return(
+                {[{id:"low",l:"Low",c:"#16A34A",bg:"#F0FDF4"},{id:"normal",l:"Normal",c:"#2563EB",bg:"#EFF6FF"},{id:"urgent",l:"Urgent 🔴",c:"#DC2626",bg:"#FEF2F2"}].map(p=>{const a=form.priority===p.id;return(
                   <button key={p.id} onClick={()=>setForm(f=>({...f,priority:p.id}))} style={{padding:"10px",borderRadius:R.md,border:"2px solid "+(a?p.c:C.border),background:a?p.bg:"#fff",color:a?p.c:C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>{p.l}</button>
                 )})}
               </div>
             </div>
           </Box>
-          <Btn onClick={submitIssue} disabled={loading}><CheckCircle size={14}/> {loading?"Submitting...":"Submit Issue"}</Btn>
+          <Btn onClick={submitIssue} disabled={loading}><CheckCircle size={14}/>{loading?"Submitting...":"Submit Issue"}</Btn>
         </div>
       )}
 
-      {/* OPEN ISSUES */}
-      {tab==="open"&&(
+      {/* OPEN ISSUES - Staff view */}
+      {tab==="issues"&&canManageAll&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {openIssues.length===0?(
-            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>
-              <div style={{fontSize:32,marginBottom:8}}>✅</div>
-              <div style={{fontWeight:700}}>No open issues!</div>
-            </Box>
-          ):openIssues.map(issue=><KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={canManageAll} onResolve={resolveIssue} toast={toast}/>)}
+            <Box style={{textAlign:"center",padding:48,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700}}>No open issues!</div></Box>
+          ):openIssues.sort((a,b)=>{const p={urgent:0,normal:1,low:2};return(p[a.priority]||1)-(p[b.priority]||1)}).map(issue=>(
+            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={true} onResolve={resolveIssue}/>
+          ))}
         </div>
       )}
 
-      {/* RESOLVED */}
-      {tab==="resolved"&&(
+      {/* RESOLVED - Staff view */}
+      {tab==="resolved"&&canManageAll&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {resolvedIssues.length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No resolved issues yet.</Box>
-          ):resolvedIssues.map(issue=><KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={false} onResolve={resolveIssue} toast={toast}/>)}
+          ):resolvedIssues.map(issue=>(
+            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={false} onResolve={resolveIssue}/>
+          ))}
         </div>
       )}
 
-      {/* ANNOUNCEMENTS */}
+      {/* ANNOUNCEMENTS - both KM and staff see this */}
       {tab==="announcements"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {canManageAll&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}><Btn onClick={()=>setAnnModal(true)} sm><Plus size={13}/> Post Announcement</Btn></div>}
           {announcements.length===0?(
-            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>
-              <div style={{fontSize:32,marginBottom:8}}>📢</div>
-              <div style={{fontWeight:700}}>No announcements yet.</div>
-              {canManageAll&&<div style={{marginTop:12}}><Btn onClick={()=>setAnnModal(true)}><Plus size={14}/> Post First Announcement</Btn></div>}
-            </Box>
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📢</div><div style={{fontWeight:700}}>No announcements yet.</div></Box>
           ):announcements.map(ann=>{
             const at=ANN_TYPES[ann.type]||ANN_TYPES.general
             return(
               <Box key={ann.id} style={{padding:16,borderLeft:"4px solid "+at.color}}>
-                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
                   <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
                       <Pill bg={at.bg} tx={at.color}>{at.label}</Pill>
                       <span style={{fontSize:11,color:C.textLight}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
                       {ann.created_by_name&&<span style={{fontSize:11,color:C.textLight}}>by {ann.created_by_name}</span>}
@@ -1849,8 +1877,49 @@ function KitchenPage({user,schools,events,supaUsers,directory,isAdmin,toast,reca
                     <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:6}}>{ann.title}</div>
                     {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7}}>{ann.body}</div>}
                   </div>
-                  {canManageAll&&<button onClick={()=>deleteAnn(ann.id)} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>Del</button>}
+                  {canManageAll&&<button onClick={async()=>{if(!window.confirm("Delete?"))return;await supabase.from("announcements").delete().eq("id",ann.id);setAnnouncements(p=>p.filter(x=>x.id!==ann.id));toast.show("Deleted.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>Del</button>}
                 </div>
+              </Box>
+            )
+          })}
+        </div>
+      )}
+
+      {/* INBOX DISABLED */
+      false&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {myMessages.length===0?(
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📬</div><div style={{fontWeight:700}}>No messages yet.</div></Box>
+          ):myMessages.map(msg=>(
+            <Box key={msg.id} style={{padding:14,borderLeft:"3px solid #2563EB"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <span style={{fontWeight:700,fontSize:13,color:C.text}}>{msg.from_name||"Staff"}</span>
+                <span style={{fontSize:11,color:C.textLight}}>{ft(msg.created_at)}</span>
+              </div>
+              <div style={{fontSize:13,color:C.textMuted,lineHeight:1.6}}>{msg.body}</div>
+            </Box>
+          ))}
+        </div>
+      )}
+
+      {/* MESSAGES - Staff sends to kitchens */}
+      {tab==="messages"&&canManageAll&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}><Btn onClick={()=>setMsgModal(true)} sm><Plus size={13}/> Send Message</Btn></div>
+          {myMessages.length===0?(
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontWeight:700}}>No messages sent yet.</div></Box>
+          ):myMessages.map(msg=>{
+            const sch=schools.find(s=>s.id===msg.to_school_id)
+            return(
+              <Box key={msg.id} style={{padding:14,borderLeft:"3px solid #7C3AED"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <span style={{fontWeight:700,fontSize:13,color:C.text}}>To: {sch?.name||"All Kitchens"}</span>
+                    <span style={{fontSize:11,color:C.textMuted}}>from {msg.from_name}</span>
+                  </div>
+                  <span style={{fontSize:11,color:C.textLight}}>{ft(msg.created_at)}</span>
+                </div>
+                <div style={{fontSize:13,color:C.textMuted,lineHeight:1.6}}>{msg.body}</div>
               </Box>
             )
           })}
@@ -1860,25 +1929,39 @@ function KitchenPage({user,schools,events,supaUsers,directory,isAdmin,toast,reca
       {/* ANNOUNCEMENT MODAL */}
       {annModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
-          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:500,boxShadow:SH.lg,marginTop:20}}>
+          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
               <span style={{fontWeight:800,fontSize:15,color:C.text}}>Post Announcement</span>
               <button onClick={()=>setAnnModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
             </div>
             <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
-              <div><L>Title *</L><Inp value={annForm.title} onChange={e=>setAnnForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Delayed Opening - Weather"/></div>
+              <div><L>Title *</L><Inp value={annForm.title} onChange={e=>setAnnForm(f=>({...f,title:e.target.value}))} placeholder="e.g. 2-Hour Delay Tomorrow - Weather"/></div>
               <div><L>Type</L>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
                   {Object.entries(ANN_TYPES).map(([id,t])=>{const a=annForm.type===id;return(
-                    <button key={id} onClick={()=>setAnnForm(f=>({...f,type:id}))} style={{padding:"8px 6px",borderRadius:R.md,border:"2px solid "+(a?t.color:C.border),background:a?t.bg:"#fff",color:a?t.color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>{t.label}</button>
+                    <button key={id} onClick={()=>setAnnForm(f=>({...f,type:id}))} style={{padding:"8px 4px",borderRadius:R.md,border:"2px solid "+(a?t.color:C.border),background:a?t.bg:"#fff",color:a?t.color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>{t.label}</button>
                   )})}
                 </div>
               </div>
               <div><L>Message</L><textarea value={annForm.body} onChange={e=>setAnnForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Write your announcement..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
-              <div style={{display:"flex",gap:10}}>
-                <Btn onClick={()=>setAnnModal(false)} variant="outline">Cancel</Btn>
-                <Btn onClick={submitAnn} disabled={!annForm.title.trim()}>Post Announcement</Btn>
-              </div>
+              <div style={{display:"flex",gap:10}}><Btn onClick={()=>setAnnModal(false)} variant="outline">Cancel</Btn><Btn onClick={submitAnn} disabled={!annForm.title.trim()}>Post</Btn></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MESSAGE MODAL */}
+      {msgModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
+          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Send Message to Kitchen</span>
+              <button onClick={()=>setMsgModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
+            </div>
+            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
+              <div><L>Send To</L><SG schools={schools} value={msgForm.to_school_id} onChange={e=>setMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
+              <div><L>Message *</L><textarea value={msgForm.body} onChange={e=>setMsgForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Type your message..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+              <div style={{display:"flex",gap:10}}><Btn onClick={()=>setMsgModal(false)} variant="outline">Cancel</Btn><Btn onClick={sendMessage} disabled={!msgForm.body.trim()}>Send</Btn></div>
             </div>
           </div>
         </div>
@@ -1887,22 +1970,21 @@ function KitchenPage({user,schools,events,supaUsers,directory,isAdmin,toast,reca
   )
 }
 
-function KitchenIssueCard({issue,schools,canManage,onResolve,toast}){
+function KitchenIssueCard({issue,schools,canManage,onResolve}){
   const [showResolve,setShowResolve]=useState(false)
   const [note,setNote]=useState("")
   const kit=KIT[issue.type]||KIT.other
   const sch=schools.find(s=>s.id===issue.school_id)
-  const priority={urgent:{bg:"#FEF2F2",tx:"#DC2626",label:"Urgent"},normal:{bg:"#EFF6FF",tx:"#2563EB",label:"Normal"},low:{bg:"#F0FDF4",tx:"#15803D",label:"Low"}}
-  const pri=priority[issue.priority]||priority.normal
+  const pri={urgent:{bg:"#FEF2F2",tx:"#DC2626",bd:"#FECACA",label:"🔴 Urgent"},normal:{bg:"#EFF6FF",tx:"#2563EB",bd:"#BFDBFE",label:"Normal"},low:{bg:"#F0FDF4",tx:"#16A34A",bd:"#BBF7D0",label:"Low"}}[issue.priority]||{bg:"#EFF6FF",tx:"#2563EB",bd:"#BFDBFE",label:"Normal"}
   return(
     <Box style={{padding:16,borderLeft:"4px solid "+(issue.resolved?"#16A34A":kit.color)}}>
-      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
         <div style={{flex:1}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:6}}>
             <span style={{fontSize:18}}>{kit.icon}</span>
             <Pill bg={kit.bg} tx={kit.color}>{kit.label}</Pill>
-            <Pill bg={pri.bg} tx={pri.tx}>{pri.label}</Pill>
-            {issue.resolved&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">Resolved</Pill>}
+            <Pill bg={pri.bg} tx={pri.tx} bd={pri.bd}>{pri.label}</Pill>
+            {issue.resolved&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">✅ Resolved</Pill>}
           </div>
           <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>{issue.title}</div>
           {issue.description&&<div style={{fontSize:12,color:C.textMuted,lineHeight:1.6,marginBottom:6}}>{issue.description}</div>}
@@ -1914,7 +1996,7 @@ function KitchenIssueCard({issue,schools,canManage,onResolve,toast}){
           </div>
         </div>
         {canManage&&!issue.resolved&&(
-          <button onClick={()=>setShowResolve(v=>!v)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"5px 10px",cursor:"pointer",color:"#15803D",fontSize:12,fontWeight:700,fontFamily:"inherit",flexShrink:0}}><CheckSquare size={12}/> Resolve</button>
+          <button onClick={()=>setShowResolve(v=>!v)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"5px 10px",cursor:"pointer",color:"#15803D",fontSize:12,fontWeight:700,fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4}}><CheckSquare size={12}/> Resolve</button>
         )}
       </div>
       {showResolve&&(
