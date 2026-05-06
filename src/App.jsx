@@ -224,6 +224,7 @@ export default function App(){
   const [page,setPage]=useState(()=>sessionStorage.getItem('ops_page')||"dashboard")
   const [ctx,setCtx]=useState(null)
   const [sideOpen,setSideOpen]=useState(false)
+  const [menuOpen,setMenuOpen]=useState(false)
   const go=(pg,c=null)=>{setPage(pg);sessionStorage.setItem('ops_page',pg);if(c)setCtx(c)}
   const [mobile,setMobile]=useState(window.innerWidth<768)
   const toast=useToast()
@@ -276,8 +277,6 @@ export default function App(){
     if(page==="admin") return <AdminPage {...props}/>
     return null
   }
-
-  const [menuOpen,setMenuOpen]=useState(false)
 
   if(mobile){
     const currentNav=navItems.find(n=>n.id===page)||navItems[0]
