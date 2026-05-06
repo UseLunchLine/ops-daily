@@ -168,44 +168,32 @@ export default function App(){
   const [user,setUser]=useState(null)
   const [authLoading,setAuthLoading]=useState(true)
 
-  const resolveUser=async(supaUser)=>{
-    if(!supaUser)return null
-    try{
-      const{data}=await supabase.from("app_users").select("*").eq("id",supaUser.id).maybeSingle()
-      if(data){
-        return{id:supaUser.id,name:data.name||supaUser.email.split("@")[0],email:supaUser.email,role:data.role||"admin",phone:data.phone||"",school_ids:data.school_ids||[],is_active:data.is_active!==false}
-      }
-    }catch(e){console.error("resolveUser:",e)}
-    return{id:supaUser.id,name:supaUser.email.split("@")[0],email:supaUser.email,role:"admin",is_active:true,school_ids:[]}
-  }
-
   useEffect(()=>{
-    let mounted=true
-    const init=async()=>{
-      try{
-        const{data:{session}}=await supabase.auth.getSession()
-        if(mounted){
-          if(session?.user){
-            const u=await resolveUser(session.user)
-            if(mounted)setUser(u)
-          }
+    supabase.auth.getSession().then(({data:{session}})=>{
+      if(session?.user){
+        // Try to get role from app_users, fallback to admin
+        supabase.from("app_users").select("*").eq("id",session.user.id).maybeSingle().then(({data})=>{
+          setUser({
+            id:session.user.id,
+            name:data?.name||session.user.email.split("@")[0],
+            email:session.user.email,
+            role:data?.role||"admin",
+            school_ids:data?.school_ids||[],
+            is_active:true
+          })
           setAuthLoading(false)
-        }
-      }catch(e){
-        console.error("Auth init error:",e)
-        if(mounted)setAuthLoading(false)
+        }).catch(()=>{
+          setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true,school_ids:[]})
+          setAuthLoading(false)
+        })
+      } else {
+        setAuthLoading(false)
       }
-    }
-    init()
-    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
-      if(!mounted)return
-      if(event==="SIGNED_OUT"||!session){setUser(null);return}
-      if(event==="SIGNED_IN"&&session?.user){
-        const u=await resolveUser(session.user)
-        if(mounted)setUser(u)
-      }
+    }).catch(()=>setAuthLoading(false))
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      if(!session){setUser(null)}
     })
-    return()=>{mounted=false;subscription.unsubscribe()}
+    return()=>subscription.unsubscribe()
   },[])
 
   useEffect(()=>{
