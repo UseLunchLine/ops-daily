@@ -37,7 +37,7 @@ const TC={hs:{bg:"#FFF3E0",tx:"#E65100",bd:"#FFB74D"},ms:{bg:"#E8EAF6",tx:"#2835
 const STATS=[{id:"green",label:"All Good",c:"#2E7D32",l:"#F1F8E9",b:"#AED581",t:"#33691E"},{id:"yellow",label:"Minor Issues",c:"#F57F17",l:"#FFFDE7",b:"#FFF176",t:"#F57F17"},{id:"red",label:"Major Problems",c:"#C62828",l:"#FFEBEE",b:"#EF9A9A",t:"#B71C1C"},{id:"partial",label:"Partial Service",c:"#6A1B9A",l:"#F3E5F5",b:"#CE93D8",t:"#6A1B9A"},{id:"delayed",label:"Delayed",c:"#00838F",l:"#E0F7FA",b:"#80DEEA",t:"#006064"},{id:"closed",label:"Closed",c:"#37474F",l:"#ECEFF1",b:"#B0BEC5",t:"#263238"}]
 const SM=Object.fromEntries(STATS.map(s=>[s.id,s]))
 const ISS=[{id:"food_out",label:"Ran out of food"},{id:"low_food",label:"Low food supply"},{id:"staffing",label:"Staffing issue"},{id:"equip",label:"Equipment issue"},{id:"delivery",label:"Delivery problem"},{id:"health",label:"Health/Safety"},{id:"power",label:"Power/Utilities"},{id:"behavior",label:"Student behavior"},{id:"pest",label:"Pest/Sanitation"},{id:"weather",label:"Weather-related"}]
-const RC={admin:{bg:"#EDE7F6",t:"#4527A0"},supervisor:{bg:"#E1F5FE",t:"#01579B"},director:{bg:"#E8EAF6",t:"#283593"},chef:{bg:"#FFF3E0",t:"#E65100"}}
+const RC={admin:{bg:"#EDE7F6",t:"#4527A0"},director:{bg:"#E8EAF6",t:"#283593"},supervisor:{bg:"#E1F5FE",t:"#01579B"},chef:{bg:"#FFF3E0",t:"#E65100"},kitchen_manager:{bg:"#F0FDF4",t:"#15803D"}}
 const CTB={calloff:{bg:"#E3F2FD",tx:"#1565C0",label:"Call-Off"},sick:{bg:"#FFFDE7",tx:"#F57F17",label:"Sick Day"},ncns:{bg:"#FFEBEE",tx:"#C62828",label:"No Call No Show"},tardy:{bg:"#FFF3E0",tx:"#E65100",label:"Tardy"}}
 const DIR_ROLES=[{id:"all",label:"All",color:"#546E7A",bg:"#ECEFF1"},{id:"manager",label:"Managers",color:"#1565C0",bg:"#E3F2FD"},{id:"chef",label:"Chefs",color:"#E65100",bg:"#FFF3E0"},{id:"director",label:"Directors",color:"#6A1B9A",bg:"#F3E5F5"},{id:"asst_dir",label:"Asst. Directors",color:"#006064",bg:"#E0F7FA"},{id:"supervisor",label:"Op Supervisors",color:"#1B5E20",bg:"#E8F5E9"},{id:"csa",label:"CSAs",color:"#4E342E",bg:"#EFEBE9"},{id:"ppa",label:"PPAs",color:"#283593",bg:"#E8EAF6"},{id:"temp",label:"Temp Staff",color:"#7B1FA2",bg:"#F3E5F5"}]
 const EMPTY_ENTRY={name:"",position:"",role_type:"manager",school_ids:[],phone:"",email:"",is_active:true,is_temp:false,temp_end_date:""}
@@ -73,8 +73,8 @@ const SC=[
 const SD=[
   {id:"d1",name:"Maria Garcia",position:"Operations Supervisor",role_type:"supervisor",school_ids:["s5"],phone:"(574) 555-0101",email:"mgarcia@sbcsc.edu",is_active:true},
   {id:"d2",name:"James Wilson",position:"Director",role_type:"director",school_ids:["s1","s2"],phone:"(574) 555-0102",email:"jwilson@sbcsc.edu",is_active:true},
-  {id:"d3",name:"Sarah Chen",position:"Chef Manager",role_type:"chef",school_ids:["s1"],phone:"(574) 555-0103",email:"schen@sbcsc.edu",is_active:true},
-  {id:"d4",name:"Robert Davis",position:"Chef Manager",role_type:"chef",school_ids:["s5","s6"],phone:"(574) 555-0104",email:"rdavis@sbcsc.edu",is_active:true},
+  {id:"d3",name:"Sarah Chen",position:"Chef",role_type:"chef",school_ids:["s1"],phone:"(574) 555-0103",email:"schen@sbcsc.edu",is_active:true},
+  {id:"d4",name:"Robert Davis",position:"Chef",role_type:"chef",school_ids:["s5","s6"],phone:"(574) 555-0104",email:"rdavis@sbcsc.edu",is_active:true},
   {id:"d5",name:"Lisa Thompson",position:"Manager",role_type:"manager",school_ids:["s2"],phone:"(574) 555-0105",email:"lthompson@sbcsc.edu",is_active:true},
   {id:"d6",name:"Carlos Mendez",position:"Asst. Director",role_type:"asst_dir",school_ids:["s9"],phone:"(574) 555-0106",email:"cmendez@sbcsc.edu",is_active:true},
   {id:"d7",name:"Angela Brooks",position:"CSA",role_type:"csa",school_ids:["s3"],phone:"(574) 555-0107",email:"abrooks@sbcsc.edu",is_active:true},
@@ -215,11 +215,16 @@ export default function App(){
 
   if(authLoading)return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",fontSize:16,color:"#64748B",gap:12}}><div>Loading...</div></div>
   if(!user)return <Login/>
-  const perms={submit:true,report:user.role!=="chef",calloffs:user.role!=="chef",directory:true,admin:user.role==="admin"}
+  const isKM=user.role==="kitchen_manager"
+  const perms={submit:!isKM,report:user.role!=="chef"&&!isKM,calloffs:user.role!=="chef"&&!isKM,directory:true,admin:user.role==="admin",kitchen:true}
   const sById=id=>schools.find(s=>s.id===id)
   const uById=id=>users.find(u=>u.id===id)||supaUsers.find(u=>u.id===id)||{name:"--"}
 
-  const navItems=[
+  const navItems=isKM?[
+    {id:"kitchen",label:"Kitchen Hub",short:"Hub",I:ClipboardList},
+    {id:"directory",label:"Directory",short:"Dir",I:BookOpen},
+    {id:"events",label:"Announcements",short:"News",I:CalendarDays},
+  ]:[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
     {id:"submit",label:"Submit Recap",short:"Submit",I:PlusCircle},
     {id:"school",label:"School Detail",short:"School",I:Building2},
@@ -228,6 +233,7 @@ export default function App(){
     {id:"directory",label:"Directory",short:"Dir",I:BookOpen},
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"events",label:"Meetings & Events",short:"Events",I:CalendarDays},
+    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
     ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
   ]
 
@@ -242,24 +248,24 @@ export default function App(){
     if(page==="directory")return <DirPage {...props}/>
     if(page==="map")return <MapPage {...props}/>
     if(page==="events")return <EventsPage {...props}/>
+    if(page==="kitchen")return <KitchenPage {...props}/>
     if(page==="admin") return <AdminPage {...props}/>
     return null
   }
 
   if(mobile){
     return(
-      <div style={{background:C.bg,minHeight:"100vh",paddingBottom:80,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{background:C.bg,minHeight:"100vh",paddingBottom:"calc(80px + env(safe-area-inset-bottom,0px))",fontFamily:"system-ui,sans-serif"}}>
         <style>{`@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
         <Toast msg={toast.msg} type={toast.type}/>
         <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:SH.sm}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:30,height:30,borderRadius:9,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontWeight:900,fontSize:13}}>O</span></div>
-            <span style={{color:C.text,fontWeight:800,fontSize:15}}>Ops Daily</span>
+            <img src="/logo.png" alt="Ops Daily" style={{height:28,objectFit:"contain"}}/>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={async()=>{await supabase.auth.signOut()}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:7}}><LogOut size={14}/></button></div>
         </div>
         <div style={{padding:"12px 14px"}}><PageEl/></div>
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,overflowX:"auto",boxShadow:"0 -2px 8px rgba(0,0,0,.06)"}}>
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,overflowX:"auto",boxShadow:"0 -2px 8px rgba(0,0,0,.06)",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
           <div style={{display:"flex",minWidth:"max-content"}}>
             {navItems.map(({id,short,I})=>{const a=page===id;return(
               <button key={id} onClick={()=>go(id)} style={{minWidth:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"9px 4px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:9,fontWeight:700,fontFamily:"inherit"}}>
@@ -279,7 +285,7 @@ export default function App(){
       <aside style={{width:sideOpen?220:60,transition:"width .2s",background:"#fff",borderRight:"1px solid #E2E8F0",display:"flex",flexDirection:"column",flexShrink:0,position:"sticky",top:0,height:"100vh",overflow:"hidden",boxShadow:"2px 0 8px rgba(0,0,0,.04)"}}>
         <div style={{height:60,display:"flex",alignItems:"center",padding:"0 12px",gap:10,borderBottom:"1px solid #E2E8F0",flexShrink:0}}>
           <button onClick={()=>setSideOpen(v=>!v)} style={{width:36,height:36,borderRadius:R.md,background:"#F8FAFC",border:"1px solid #E2E8F0",color:C.textMuted,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Menu size={16}/></button>
-          {sideOpen&&<span style={{color:C.text,fontWeight:800,fontSize:14,whiteSpace:"nowrap"}}>Ops Daily</span>}
+          {sideOpen&&<img src="/logo.png" alt="Ops Daily" style={{height:22,objectFit:"contain",maxWidth:140}}/>}
         </div>
         <nav style={{flex:1,padding:"10px 8px",display:"flex",flexDirection:"column",gap:1,overflowY:"auto"}}>
           {navItems.map(({id,label,I})=>{
@@ -623,7 +629,7 @@ function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin}){
         <div style={{marginBottom:14}}>
           {tc&&<div style={{marginBottom:10}}><Pill bg={tc.bg} tx={tc.tx} bd={tc.bd}>{TL[sch.type]}</Pill></div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-            {[["chef","Chef Manager"],["director","Director"],["supervisor","Supervisor"]].map(([r,lab])=>(
+            {[["chef","Chef"],["director","Director"],["supervisor","Supervisor"]].map(([r,lab])=>(
               <Box key={r} style={{padding:"12px 14px"}}><L>{lab}</L><div style={{fontWeight:700,fontSize:13,color:C.text,marginTop:2}}>{sn(r)||<em style={{fontWeight:400,color:C.textLight}}>Unassigned</em>}</div></Box>
             ))}
           </div>
@@ -1032,7 +1038,7 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
             </div>
             <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
               <div><L>Full Name *</L><Inp value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Jane Smith"/></div>
-              <div><L>Position / Title</L><Inp value={form.position} onChange={e=>setForm(f=>({...f,position:e.target.value}))} placeholder="e.g. Chef Manager, Director"/></div>
+              <div><L>Position / Title</L><Inp value={form.position} onChange={e=>setForm(f=>({...f,position:e.target.value}))} placeholder="e.g. Chef, Director"/></div>
               <div><L>Role Category</L>
                 <Sel value={form.role_type} onChange={e=>setForm(f=>({...f,role_type:e.target.value}))}>
                   {DIR_ROLES.filter(r=>r.id!=="all").map(r=><option key={r.id} value={r.id}>{r.label.endsWith("s")?r.label.slice(0,-1):r.label}</option>)}
@@ -1151,7 +1157,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
     setEs(null)
   }
 
-  const ROLES=["admin","supervisor","director","chef","manager","csa","ppa"]
+  const ROLES=["admin","director","supervisor","chef","kitchen_manager","csa","ppa"]
 
   return(
     <div style={{padding:"24px 20px"}}>
@@ -1248,7 +1254,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
         {es&&<Box style={{maxWidth:420}}>
           <h3 style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:18}}>Assign Staff - {es.name}</h3>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {[{r:"chef",l:"Chef Manager",f:"chef_id"},{r:"director",l:"Director",f:"director_id"},{r:"supervisor",l:"Supervisor",f:"supervisor_id"}].map(({r,l,f})=><div key={r}><L>{l}</L><Sel value={af[f]} onChange={e=>setAf(p=>({...p,[f]:e.target.value}))}><option value="">-- Unassigned --</option>{[...byRole(r),...supaUsers.filter(u=>u.role===r&&u.is_active)].filter((u,i,a)=>a.findIndex(x=>x.id===u.id)===i).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</Sel></div>)}
+            {[{r:"chef",l:"Chef",f:"chef_id"},{r:"director",l:"Director",f:"director_id"},{r:"supervisor",l:"Supervisor",f:"supervisor_id"}].map(({r,l,f})=><div key={r}><L>{l}</L><Sel value={af[f]} onChange={e=>setAf(p=>({...p,[f]:e.target.value}))}><option value="">-- Unassigned --</option>{[...byRole(r),...supaUsers.filter(u=>u.role===r&&u.is_active)].filter((u,i,a)=>a.findIndex(x=>x.id===u.id)===i).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</Sel></div>)}
             <div style={{display:"flex",gap:10,marginTop:4}}>
               <Btn onClick={()=>setEs(null)} variant="outline">Cancel</Btn>
               <Btn onClick={save}>Save Assignment</Btn>
@@ -1636,5 +1642,291 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
         </div>
       )}
     </div>
+  )
+}
+
+const KITCHEN_ISSUE_TYPES=[
+  {id:"equipment",label:"Equipment Down",icon:"🔧",color:"#DC2626",bg:"#FEF2F2"},
+  {id:"pest",label:"Pest/Sanitation",icon:"🐛",color:"#92400E",bg:"#FFFBEB"},
+  {id:"staffing",label:"Staff Issue",icon:"👤",color:"#1D4ED8",bg:"#EFF6FF"},
+  {id:"supply",label:"Supply/Food Shortage",icon:"📦",color:"#7C3AED",bg:"#F5F3FF"},
+  {id:"safety",label:"Health & Safety",icon:"⚠️",color:"#B45309",bg:"#FFFBEB"},
+  {id:"facility",label:"Facility/Building",icon:"🏫",color:"#0F766E",bg:"#F0FDFA"},
+  {id:"coverage",label:"Coverage Request",icon:"🙋",color:"#15803D",bg:"#F0FDF4"},
+  {id:"weather",label:"Weather Delay",icon:"🌧️",color:"#334155",bg:"#F8FAFC"},
+  {id:"utilities",label:"Power/Utilities",icon:"⚡",color:"#D97706",bg:"#FFFBEB"},
+  {id:"other",label:"Other Issue",icon:"📋",color:"#64748B",bg:"#F8FAFC"},
+]
+const KIT=Object.fromEntries(KITCHEN_ISSUE_TYPES.map(t=>[t.id,t]))
+
+function KitchenPage({user,schools,events,supaUsers,directory,isAdmin,toast,recaps}){
+  const [tab,setTab]=useState("report")
+  const [issues,setIssues]=useState([])
+  const [announcements,setAnnouncements]=useState([])
+  const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
+  const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",school_ids:[]})
+  const [annModal,setAnnModal]=useState(false)
+  const [loading,setLoading]=useState(false)
+  const [mobile,setMobile]=useState(window.innerWidth<768)
+  useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
+
+  // Get user's assigned school
+  const userSchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
+  const mySchool=schools.find(s=>userSchoolIds.includes(s.id))
+  const canManageAll=["admin","director","supervisor","chef"].includes(user.role)
+
+  useEffect(()=>{loadIssues();loadAnnouncements()},[])
+
+  const loadIssues=async()=>{
+    const{data}=await supabase.from("kitchen_issues").select("*").order("created_at",{ascending:false})
+    if(data)setIssues(data)
+  }
+
+  const loadAnnouncements=async()=>{
+    const{data}=await supabase.from("announcements").select("*").order("created_at",{ascending:false})
+    if(data)setAnnouncements(data)
+  }
+
+  const submitIssue=async()=>{
+    if(!form.title.trim()){toast.show("Please add a title.","error");return}
+    const schoolId=canManageAll?form.school_id:(mySchool?.id||"")
+    if(!schoolId){toast.show("No school assigned to your account.","error");return}
+    setLoading(true)
+    const newIssue={id:uid(),type:form.type,title:form.title.trim(),description:form.description.trim(),priority:form.priority,school_id:schoolId,status:"open",created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString(),resolved:false,resolution_note:""}
+    const{error}=await supabase.from("kitchen_issues").insert(newIssue)
+    if(error){toast.show("Failed to submit: "+error.message,"error");setLoading(false);return}
+    setIssues(p=>[newIssue,...p])
+    setForm({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
+    toast.show("Issue reported successfully!")
+    setLoading(false)
+  }
+
+  const resolveIssue=async(issue,note="")=>{
+    await supabase.from("kitchen_issues").update({resolved:true,status:"resolved",resolution_note:note,resolved_at:new Date().toISOString()}).eq("id",issue.id)
+    setIssues(p=>p.map(x=>x.id===issue.id?{...x,resolved:true,status:"resolved",resolution_note:note}:x))
+    toast.show("Issue resolved!")
+  }
+
+  const submitAnn=async()=>{
+    if(!annForm.title.trim()){return}
+    const na={id:uid(),...annForm,title:annForm.title.trim(),created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString()}
+    await supabase.from("announcements").insert(na)
+    setAnnouncements(p=>[na,...p])
+    setAnnForm({title:"",body:"",type:"general",school_ids:[]})
+    setAnnModal(false)
+    toast.show("Announcement posted!")
+  }
+
+  const deleteAnn=async(id)=>{
+    if(!window.confirm("Delete this announcement?"))return
+    await supabase.from("announcements").delete().eq("id",id)
+    setAnnouncements(p=>p.filter(x=>x.id!==id))
+    toast.show("Announcement deleted.")
+  }
+
+  const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
+  const openIssues=myIssues.filter(i=>!i.resolved)
+  const resolvedIssues=myIssues.filter(i=>i.resolved)
+
+  const ANN_TYPES={
+    general:{label:"General",color:"#2563EB",bg:"#EFF6FF"},
+    weather:{label:"Weather Delay",color:"#0891B2",bg:"#E0F7FA"},
+    closure:{label:"Closure",color:"#DC2626",bg:"#FEF2F2"},
+    coverage:{label:"Coverage Needed",color:"#15803D",bg:"#F0FDF4"},
+    training:{label:"Training",color:"#7C3AED",bg:"#F5F3FF"},
+    urgent:{label:"Urgent",color:"#B45309",bg:"#FFFBEB"},
+  }
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="Kitchen Hub" subtitle={canManageAll?"District-wide kitchen issues and announcements":"Report issues and view announcements for your kitchen"}
+        action={canManageAll&&<Btn onClick={()=>setAnnModal(true)}><Plus size={14}/> Post Announcement</Btn>}/>
+
+      {/* Stats for managers */}
+      {canManageAll&&(
+        <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(4,1fr)",gap:10,marginBottom:20}}>
+          <div style={{background:"#FEF2F2",borderRadius:R.lg,padding:"14px 16px",border:"1px solid #FECACA",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:900,color:"#DC2626"}}>{openIssues.filter(i=>i.priority==="urgent").length}</div>
+            <div style={{fontSize:11,fontWeight:600,color:"#B91C1C",marginTop:3}}>Urgent Issues</div>
+          </div>
+          <div style={{background:"#FFF7ED",borderRadius:R.lg,padding:"14px 16px",border:"1px solid #FED7AA",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:900,color:"#C2410C"}}>{openIssues.length}</div>
+            <div style={{fontSize:11,fontWeight:600,color:"#9A3412",marginTop:3}}>Open Issues</div>
+          </div>
+          <div style={{background:"#F0FDF4",borderRadius:R.lg,padding:"14px 16px",border:"1px solid #BBF7D0",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:900,color:"#15803D"}}>{resolvedIssues.length}</div>
+            <div style={{fontSize:11,fontWeight:600,color:"#14532D",marginTop:3}}>Resolved</div>
+          </div>
+          <div style={{background:"#EFF6FF",borderRadius:R.lg,padding:"14px 16px",border:"1px solid #BFDBFE",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:900,color:"#1D4ED8"}}>{announcements.length}</div>
+            <div style={{fontSize:11,fontWeight:600,color:"#1E40AF",marginTop:3}}>Announcements</div>
+          </div>
+        </div>
+      )}
+
+      <TabBar tabs={[{id:"report",label:"Report Issue"},{id:"open",label:"Open Issues"+(openIssues.length>0?" ("+openIssues.length+")":"")},{id:"resolved",label:"Resolved"},{id:"announcements",label:"Announcements"}]} active={tab} set={setTab}/>
+
+      {/* REPORT ISSUE */}
+      {tab==="report"&&(
+        <div style={{maxWidth:600,display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"12px 16px",fontSize:13,color:"#92400E",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:18}}>⏰</span>
+            <span><strong>Reminder:</strong> Time off requests must still be submitted on the kitchen computer time clock system. This form is only for operational issues.</span>
+          </div>
+          <Box style={{display:"flex",flexDirection:"column",gap:14}}>
+            {canManageAll&&(
+              <div><L>School</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></div>
+            )}
+            {!canManageAll&&mySchool&&(
+              <div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#0369A1"}}>📍 Reporting for: {mySchool.name}</div>
+            )}
+            <div>
+              <L>Issue Type</L>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>
+                {KITCHEN_ISSUE_TYPES.map(t=>{const a=form.type===t.id;return(
+                  <button key={t.id} onClick={()=>setForm(f=>({...f,type:t.id}))} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:R.md,border:"2px solid "+(a?t.color:C.border),background:a?t.bg:"#fff",color:a?t.color:C.textMuted,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",textAlign:"left"}}>
+                    <span style={{fontSize:16}}>{t.icon}</span>{t.label}
+                  </button>
+                )})}
+              </div>
+            </div>
+            <div><L>Title / Summary *</L><Inp value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Oven not heating, pest sighting in dry storage..."/></div>
+            <div><L>Details</L><textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={3} placeholder="Describe the issue in detail..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+            <div>
+              <L>Priority</L>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                {[{id:"low",l:"Low",c:"#16A34A",bg:"#F0FDF4"},{id:"normal",l:"Normal",c:"#2563EB",bg:"#EFF6FF"},{id:"urgent",l:"Urgent",c:"#DC2626",bg:"#FEF2F2"}].map(p=>{const a=form.priority===p.id;return(
+                  <button key={p.id} onClick={()=>setForm(f=>({...f,priority:p.id}))} style={{padding:"10px",borderRadius:R.md,border:"2px solid "+(a?p.c:C.border),background:a?p.bg:"#fff",color:a?p.c:C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>{p.l}</button>
+                )})}
+              </div>
+            </div>
+          </Box>
+          <Btn onClick={submitIssue} disabled={loading}><CheckCircle size={14}/> {loading?"Submitting...":"Submit Issue"}</Btn>
+        </div>
+      )}
+
+      {/* OPEN ISSUES */}
+      {tab==="open"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {openIssues.length===0?(
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>
+              <div style={{fontSize:32,marginBottom:8}}>✅</div>
+              <div style={{fontWeight:700}}>No open issues!</div>
+            </Box>
+          ):openIssues.map(issue=><KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={canManageAll} onResolve={resolveIssue} toast={toast}/>)}
+        </div>
+      )}
+
+      {/* RESOLVED */}
+      {tab==="resolved"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {resolvedIssues.length===0?(
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No resolved issues yet.</Box>
+          ):resolvedIssues.map(issue=><KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={false} onResolve={resolveIssue} toast={toast}/>)}
+        </div>
+      )}
+
+      {/* ANNOUNCEMENTS */}
+      {tab==="announcements"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {announcements.length===0?(
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>
+              <div style={{fontSize:32,marginBottom:8}}>📢</div>
+              <div style={{fontWeight:700}}>No announcements yet.</div>
+              {canManageAll&&<div style={{marginTop:12}}><Btn onClick={()=>setAnnModal(true)}><Plus size={14}/> Post First Announcement</Btn></div>}
+            </Box>
+          ):announcements.map(ann=>{
+            const at=ANN_TYPES[ann.type]||ANN_TYPES.general
+            return(
+              <Box key={ann.id} style={{padding:16,borderLeft:"4px solid "+at.color}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                      <Pill bg={at.bg} tx={at.color}>{at.label}</Pill>
+                      <span style={{fontSize:11,color:C.textLight}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
+                      {ann.created_by_name&&<span style={{fontSize:11,color:C.textLight}}>by {ann.created_by_name}</span>}
+                    </div>
+                    <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:6}}>{ann.title}</div>
+                    {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7}}>{ann.body}</div>}
+                  </div>
+                  {canManageAll&&<button onClick={()=>deleteAnn(ann.id)} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>Del</button>}
+                </div>
+              </Box>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ANNOUNCEMENT MODAL */}
+      {annModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
+          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:500,boxShadow:SH.lg,marginTop:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Post Announcement</span>
+              <button onClick={()=>setAnnModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
+            </div>
+            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
+              <div><L>Title *</L><Inp value={annForm.title} onChange={e=>setAnnForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Delayed Opening - Weather"/></div>
+              <div><L>Type</L>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+                  {Object.entries(ANN_TYPES).map(([id,t])=>{const a=annForm.type===id;return(
+                    <button key={id} onClick={()=>setAnnForm(f=>({...f,type:id}))} style={{padding:"8px 6px",borderRadius:R.md,border:"2px solid "+(a?t.color:C.border),background:a?t.bg:"#fff",color:a?t.color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>{t.label}</button>
+                  )})}
+                </div>
+              </div>
+              <div><L>Message</L><textarea value={annForm.body} onChange={e=>setAnnForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Write your announcement..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+              <div style={{display:"flex",gap:10}}>
+                <Btn onClick={()=>setAnnModal(false)} variant="outline">Cancel</Btn>
+                <Btn onClick={submitAnn} disabled={!annForm.title.trim()}>Post Announcement</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function KitchenIssueCard({issue,schools,canManage,onResolve,toast}){
+  const [showResolve,setShowResolve]=useState(false)
+  const [note,setNote]=useState("")
+  const kit=KIT[issue.type]||KIT.other
+  const sch=schools.find(s=>s.id===issue.school_id)
+  const priority={urgent:{bg:"#FEF2F2",tx:"#DC2626",label:"Urgent"},normal:{bg:"#EFF6FF",tx:"#2563EB",label:"Normal"},low:{bg:"#F0FDF4",tx:"#15803D",label:"Low"}}
+  const pri=priority[issue.priority]||priority.normal
+  return(
+    <Box style={{padding:16,borderLeft:"4px solid "+(issue.resolved?"#16A34A":kit.color)}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:10}}>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+            <span style={{fontSize:18}}>{kit.icon}</span>
+            <Pill bg={kit.bg} tx={kit.color}>{kit.label}</Pill>
+            <Pill bg={pri.bg} tx={pri.tx}>{pri.label}</Pill>
+            {issue.resolved&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">Resolved</Pill>}
+          </div>
+          <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>{issue.title}</div>
+          {issue.description&&<div style={{fontSize:12,color:C.textMuted,lineHeight:1.6,marginBottom:6}}>{issue.description}</div>}
+          {issue.resolved&&issue.resolution_note&&<div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"6px 10px",fontSize:12,color:"#15803D",marginBottom:6}}>Resolution: {issue.resolution_note}</div>}
+          <div style={{fontSize:11,color:C.textLight,display:"flex",gap:10,flexWrap:"wrap"}}>
+            <span>📍 {sch?.name||"--"}</span>
+            <span>By {issue.created_by_name||"--"}</span>
+            <span>{ft(issue.created_at)}</span>
+          </div>
+        </div>
+        {canManage&&!issue.resolved&&(
+          <button onClick={()=>setShowResolve(v=>!v)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"5px 10px",cursor:"pointer",color:"#15803D",fontSize:12,fontWeight:700,fontFamily:"inherit",flexShrink:0}}><CheckSquare size={12}/> Resolve</button>
+        )}
+      </div>
+      {showResolve&&(
+        <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:14,marginTop:4}}>
+          <L>Resolution Note (optional)</L>
+          <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="How was this resolved?" style={{...inp,resize:"vertical",marginBottom:10}}/>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>setShowResolve(false)} variant="outline" sm>Cancel</Btn>
+            <Btn onClick={()=>{onResolve(issue,note);setShowResolve(false)}} variant="success" sm>Mark Resolved</Btn>
+          </div>
+        </div>
+      )}
+    </Box>
   )
 }
