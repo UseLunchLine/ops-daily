@@ -171,27 +171,29 @@ export default function App(){
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
       if(session?.user){
-        // Try to get role from app_users, fallback to admin
         supabase.from("app_users").select("*").eq("id",session.user.id).maybeSingle().then(({data})=>{
-          setUser({
-            id:session.user.id,
-            name:data?.name||session.user.email.split("@")[0],
-            email:session.user.email,
-            role:data?.role||"admin",
-            school_ids:data?.school_ids||[],
-            is_active:true
-          })
+          setUser({id:session.user.id,name:data?.name||session.user.email.split("@")[0],email:session.user.email,role:data?.role||"admin",school_ids:data?.school_ids||[],is_active:true})
+        }).catch(()=>{
+          setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true,school_ids:[]})
+        }).finally(()=>setAuthLoading(false))
+      } else {
+        setAuthLoading(false)
+      }
+    }).catch(()=>setAuthLoading(false))
+
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      if(session?.user){
+        supabase.from("app_users").select("*").eq("id",session.user.id).maybeSingle().then(({data})=>{
+          setUser({id:session.user.id,name:data?.name||session.user.email.split("@")[0],email:session.user.email,role:data?.role||"admin",school_ids:data?.school_ids||[],is_active:true})
           setAuthLoading(false)
         }).catch(()=>{
           setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true,school_ids:[]})
           setAuthLoading(false)
         })
       } else {
+        setUser(null)
         setAuthLoading(false)
       }
-    }).catch(()=>setAuthLoading(false))
-    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
-      if(!session){setUser(null)}
     })
     return()=>subscription.unsubscribe()
   },[])
