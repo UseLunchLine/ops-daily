@@ -168,13 +168,24 @@ export default function App(){
   const [user,setUser]=useState(null)
   const [authLoading,setAuthLoading]=useState(true)
 
+  const resolveUser=async(supaUser)=>{
+    if(!supaUser)return null
+    // Look up real role from app_users table
+    const{data}=await supabase.from("app_users").select("*").eq("id",supaUser.id).single()
+    if(data){
+      return{id:supaUser.id,name:data.name||supaUser.email.split("@")[0],email:supaUser.email,role:data.role||"admin",phone:data.phone||"",school_ids:data.school_ids||[],is_active:data.is_active!==false}
+    }
+    // Fallback - not in app_users yet, treat as admin
+    return{id:supaUser.id,name:supaUser.email.split("@")[0],email:supaUser.email,role:"admin",is_active:true}
+  }
+
   useEffect(()=>{
-    supabase.auth.getSession().then(({data:{session}})=>{
-      if(session?.user)setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true})
+    supabase.auth.getSession().then(async({data:{session}})=>{
+      if(session?.user){const u=await resolveUser(session.user);setUser(u)}
       setAuthLoading(false)
     })
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
-      if(session?.user)setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true})
+    const {data:{subscription}}=supabase.auth.onAuthStateChange(async(_,session)=>{
+      if(session?.user){const u=await resolveUser(session.user);setUser(u)}
       else setUser(null)
     })
     return()=>subscription.unsubscribe()
@@ -255,25 +266,63 @@ export default function App(){
   }
 
   if(mobile){
+    const [menuOpen,setMenuOpen]=React.useState(false)
+    const currentNav=navItems.find(n=>n.id===page)||navItems[0]
     return(
-      <div style={{background:C.bg,minHeight:"100vh",paddingBottom:"calc(80px + env(safe-area-inset-bottom,0px))",fontFamily:"system-ui,sans-serif"}}>
-        <style>{`@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
+      <div style={{background:C.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif"}}>
+        <style>{"@keyframes slideIn{from{transform:translateX(-100%);opacity:0}to{transform:translateX(0);opacity:1}}@keyframes fadeIn{from{opacity:0}to{opacity:1}}"}</style>
         <Toast msg={toast.msg} type={toast.type}/>
-        <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:SH.sm}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:28,height:28,borderRadius:8,background:"#111",border:"2.5px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}><div style={{width:14,height:14,borderRadius:"50%",border:"2.5px solid #fff",background:"transparent"}}></div></div><span style={{fontWeight:900,fontSize:15,letterSpacing:"-.3px"}}><span style={{color:"#111"}}>OPS</span><span style={{color:"#3B82F6"}}>DAILY</span></span></div>
+        <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:30,boxShadow:SH.sm}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={()=>setMenuOpen(v=>!v)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.text,cursor:"pointer",display:"flex",padding:8}}>
+              <Menu size={18}/>
+            </button>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:26,height:26,borderRadius:7,background:"#111",border:"2.5px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <div style={{width:12,height:12,borderRadius:"50%",border:"2.5px solid #fff"}}></div>
+              </div>
+              <span style={{fontWeight:900,fontSize:14,letterSpacing:"-.3px"}}>
+                <span style={{color:"#111"}}>OPS</span><span style={{color:"#3B82F6"}}>DAILY</span>
+              </span>
+            </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={async()=>{await supabase.auth.signOut()}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:7}}><LogOut size={14}/></button></div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12,fontWeight:700,color:C.textMuted,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentNav?.label}</span>
+          </div>
         </div>
-        <div style={{padding:"12px 14px"}}><PageEl/></div>
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,boxShadow:"0 -2px 8px rgba(0,0,0,.06)",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
-          <div style={{display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-            {navItems.map(({id,short,I})=>{const a=page===id;return(
-              <button key={id} onClick={()=>go(id)} style={{flexShrink:0,minWidth:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 6px 8px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:9,fontWeight:700,fontFamily:"inherit"}}>
-                <I size={17}/><span style={{whiteSpace:"nowrap"}}>{short}</span>
+
+        {menuOpen&&<>
+          <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:40,animation:"fadeIn .15s ease"}}/>
+          <div style={{position:"fixed",top:0,left:0,bottom:0,width:260,background:"#fff",zIndex:50,boxShadow:"4px 0 24px rgba(0,0,0,.15)",display:"flex",flexDirection:"column",animation:"slideIn .2s ease"}}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:28,height:28,borderRadius:8,background:"#111",border:"2.5px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <div style={{width:13,height:13,borderRadius:"50%",border:"2.5px solid #fff"}}></div>
+                </div>
+                <span style={{fontWeight:900,fontSize:15}}><span style={{color:"#111"}}>OPS</span><span style={{color:"#3B82F6"}}>DAILY</span></span>
+              </div>
+              <button onClick={()=>setMenuOpen(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={15}/></button>
+            </div>
+            <div style={{padding:"10px 12px",background:"#F8FAFC",margin:"10px 12px",borderRadius:R.md,border:"1px solid #E2E8F0"}}>
+              <div style={{fontSize:12,color:C.text,fontWeight:700}}>{user.name||user.email}</div>
+              <div style={{marginTop:4}}><RP role={user.role}/></div>
+            </div>
+            <nav style={{flex:1,overflowY:"auto",padding:"4px 8px"}}>
+              {navItems.map(({id,label,I})=>{const a=page===id;return(
+                <button key={id} onClick={()=>{go(id);setMenuOpen(false)}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:R.md,border:"none",background:a?"#EFF6FF":"transparent",color:a?"#2563EB":C.textMuted,cursor:"pointer",fontSize:14,fontWeight:a?700:500,marginBottom:2,fontFamily:"inherit",textAlign:"left"}}>
+                  <I size={18} style={{flexShrink:0}}/>{label}
+                </button>
+              ))}
+            </nav>
+            <div style={{padding:"12px",borderTop:"1px solid #E2E8F0"}}>
+              <button onClick={async()=>{await supabase.auth.signOut()}} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#FEF2F2",border:"none",borderRadius:R.md,color:"#DC2626",cursor:"pointer",fontSize:14,fontWeight:600,fontFamily:"inherit"}}>
+                <LogOut size={16}/>Sign Out
               </button>
-            )})}</div>
-        </div>
+            </div>
+          </div>
+        </>}
+
+        <div style={{padding:"12px 14px",paddingBottom:32}}><PageEl/></div>
       </div>
     )
   }
