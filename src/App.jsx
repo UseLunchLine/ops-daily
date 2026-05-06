@@ -170,23 +170,27 @@ export default function App(){
 
   const resolveUser=async(supaUser)=>{
     if(!supaUser)return null
-    // Look up real role from app_users table
-    const{data}=await supabase.from("app_users").select("*").eq("id",supaUser.id).single()
-    if(data){
-      return{id:supaUser.id,name:data.name||supaUser.email.split("@")[0],email:supaUser.email,role:data.role||"admin",phone:data.phone||"",school_ids:data.school_ids||[],is_active:data.is_active!==false}
-    }
-    // Fallback - not in app_users yet, treat as admin
-    return{id:supaUser.id,name:supaUser.email.split("@")[0],email:supaUser.email,role:"admin",is_active:true}
+    try{
+      const{data,error}=await supabase.from("app_users").select("*").eq("id",supaUser.id).maybeSingle()
+      if(data&&!error){
+        return{id:supaUser.id,name:data.name||supaUser.email.split("@")[0],email:supaUser.email,role:data.role||"admin",phone:data.phone||"",school_ids:data.school_ids||[],is_active:data.is_active!==false}
+      }
+    }catch(e){console.error("resolveUser error:",e)}
+    return{id:supaUser.id,name:supaUser.email.split("@")[0],email:supaUser.email,role:"admin",is_active:true,school_ids:[]}
   }
 
   useEffect(()=>{
     supabase.auth.getSession().then(async({data:{session}})=>{
-      if(session?.user){const u=await resolveUser(session.user);setUser(u)}
+      try{
+        if(session?.user){const u=await resolveUser(session.user);setUser(u)}
+      }catch(e){console.error(e)}
       setAuthLoading(false)
     })
     const {data:{subscription}}=supabase.auth.onAuthStateChange(async(_,session)=>{
-      if(session?.user){const u=await resolveUser(session.user);setUser(u)}
-      else setUser(null)
+      try{
+        if(session?.user){const u=await resolveUser(session.user);setUser(u)}
+        else setUser(null)
+      }catch(e){setUser(null)}
     })
     return()=>subscription.unsubscribe()
   },[])
