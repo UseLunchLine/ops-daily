@@ -312,7 +312,7 @@ export default function App(){
                 <button key={id} onClick={()=>{go(id);setMenuOpen(false)}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:R.md,border:"none",background:a?"#EFF6FF":"transparent",color:a?"#2563EB":C.textMuted,cursor:"pointer",fontSize:14,fontWeight:a?700:500,marginBottom:2,fontFamily:"inherit",textAlign:"left"}}>
                   <I size={18} style={{flexShrink:0}}/>{label}
                 </button>
-              ))}
+              )})}
             </nav>
             <div style={{padding:"12px",borderTop:"1px solid #E2E8F0"}}>
               <button onClick={async()=>{await supabase.auth.signOut()}} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"#FEF2F2",border:"none",borderRadius:R.md,color:"#DC2626",cursor:"pointer",fontSize:14,fontWeight:600,fontFamily:"inherit"}}>
