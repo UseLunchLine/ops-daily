@@ -1730,7 +1730,7 @@ const ANN_TYPES={
   urgent:{label:"Urgent",color:"#B45309",bg:"#FFFBEB"},
 }
 
-function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=false}){
+function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=false,events=[]}){
   const isKM=user.role==="kitchen_manager"
   const canManageAll=["admin","director","supervisor","chef"].includes(user.role)
 
@@ -1813,7 +1813,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   // KM tabs: Report, Announcements, Inbox
   // Others: Issues, Announcements, Send Message
-  const kmTabs=[{id:"report",label:"Report Issue"},{id:"announcements",label:"Announcements"}]
+  const kmTabs=[{id:"report",label:"Report Issue"},{id:"announcements",label:"Announcements"},{id:"calendar",label:"Calendar"},{id:"inbox",label:"Inbox"}]
   const staffTabs=[{id:"issues",label:"Open Issues"+(openIssues.length>0?" ("+openIssues.length+")":"")},{id:"resolved",label:"Resolved"},{id:"announcements",label:"Announcements"},{id:"messages",label:"Messages"}]
 
   return(
@@ -1947,11 +1947,34 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         </div>
       )}
 
-      {/* INBOX DISABLED */
-      false&&(
+      {/* CALENDAR - KM sees events */}
+      {tab==="calendar"&&isKM&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"10px 14px",fontSize:13,color:"#1D4ED8"}}>📅 All meetings and events scheduled for your school by Admin, Directors and Supervisors.</div>
+          {events.filter(e=>!e.school_ids?.length||e.school_ids.includes(mySchool?.id)).length===0?(
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📅</div><div style={{fontWeight:700}}>No upcoming events.</div></Box>
+          ):events.filter(e=>!e.school_ids?.length||e.school_ids.includes(mySchool?.id)).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
+            const et=ET[e.type]||ET.other
+            return(
+              <Box key={e.id} style={{padding:16,borderLeft:"4px solid "+et.color}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+                  <Pill bg={et.bg} tx={et.color} bd={et.bd}>{et.label}</Pill>
+                  <span style={{fontSize:12,color:C.textMuted}}>{fd(e.date)}{e.time&&" at "+fmt(e.time)}{e.end_time&&" - "+fmt(e.end_time)}</span>
+                </div>
+                <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>{e.title}</div>
+                {e.location&&<div style={{fontSize:12,color:C.textMuted,marginBottom:4}}>📍 {e.location}</div>}
+                {e.description&&<div style={{fontSize:12,color:C.textMuted,lineHeight:1.6}}>{e.description}</div>}
+              </Box>
+            )
+          })}
+        </div>
+      )}
+
+      {/* INBOX - KM sees messages */}
+      {tab==="inbox"&&isKM&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {myMessages.length===0?(
-            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📬</div><div style={{fontWeight:700}}>No messages yet.</div></Box>
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📬</div><div style={{fontWeight:700}}>No messages yet.</div><div style={{fontSize:13,color:C.textLight,marginTop:6}}>Messages from Admin, Directors and Supervisors will appear here.</div></Box>
           ):myMessages.map(msg=>(
             <Box key={msg.id} style={{padding:14,borderLeft:"3px solid #2563EB"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
