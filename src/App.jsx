@@ -171,28 +171,41 @@ export default function App(){
   const resolveUser=async(supaUser)=>{
     if(!supaUser)return null
     try{
-      const{data,error}=await supabase.from("app_users").select("*").eq("id",supaUser.id).maybeSingle()
-      if(data&&!error){
+      const{data}=await supabase.from("app_users").select("*").eq("id",supaUser.id).maybeSingle()
+      if(data){
         return{id:supaUser.id,name:data.name||supaUser.email.split("@")[0],email:supaUser.email,role:data.role||"admin",phone:data.phone||"",school_ids:data.school_ids||[],is_active:data.is_active!==false}
       }
-    }catch(e){console.error("resolveUser error:",e)}
+    }catch(e){console.error("resolveUser:",e)}
     return{id:supaUser.id,name:supaUser.email.split("@")[0],email:supaUser.email,role:"admin",is_active:true,school_ids:[]}
   }
 
   useEffect(()=>{
-    supabase.auth.getSession().then(async({data:{session}})=>{
+    let mounted=true
+    const init=async()=>{
       try{
-        if(session?.user){const u=await resolveUser(session.user);setUser(u)}
-      }catch(e){console.error(e)}
-      setAuthLoading(false)
+        const{data:{session}}=await supabase.auth.getSession()
+        if(mounted){
+          if(session?.user){
+            const u=await resolveUser(session.user)
+            if(mounted)setUser(u)
+          }
+          setAuthLoading(false)
+        }
+      }catch(e){
+        console.error("Auth init error:",e)
+        if(mounted)setAuthLoading(false)
+      }
+    }
+    init()
+    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
+      if(!mounted)return
+      if(event==="SIGNED_OUT"||!session){setUser(null);return}
+      if(event==="SIGNED_IN"&&session?.user){
+        const u=await resolveUser(session.user)
+        if(mounted)setUser(u)
+      }
     })
-    const {data:{subscription}}=supabase.auth.onAuthStateChange(async(_,session)=>{
-      try{
-        if(session?.user){const u=await resolveUser(session.user);setUser(u)}
-        else setUser(null)
-      }catch(e){setUser(null)}
-    })
-    return()=>subscription.unsubscribe()
+    return()=>{mounted=false;subscription.unsubscribe()}
   },[])
 
   useEffect(()=>{
@@ -228,7 +241,14 @@ export default function App(){
   const toast=useToast()
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
-  if(authLoading)return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",fontSize:16,color:"#64748B",gap:12}}><div>Loading...</div></div>
+  if(authLoading)return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748B",gap:12,background:"#F8FAFC"}}>
+      <div style={{width:40,height:40,borderRadius:10,background:"#111",border:"3px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:18,height:18,borderRadius:"50%",border:"3px solid #fff"}}></div>
+      </div>
+      <div style={{fontSize:14,fontWeight:600}}>Loading Ops Daily...</div>
+    </div>
+  )
   if(!user)return <Login/>
   const isKM=user.role==="kitchen_manager"
   const perms={submit:!isKM,report:user.role!=="chef"&&!isKM,calloffs:user.role!=="chef"&&!isKM,directory:true,admin:user.role==="admin",kitchen:true}
