@@ -266,14 +266,13 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:8}}><RP role={user.role}/><button onClick={async()=>{await supabase.auth.signOut()}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.textMuted,cursor:"pointer",display:"flex",padding:7}}><LogOut size={14}/></button></div>
         </div>
         <div style={{padding:"12px 14px"}}><PageEl/></div>
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,overflowX:"auto",boxShadow:"0 -2px 8px rgba(0,0,0,.06)",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
-          <div style={{display:"flex",width:"100%"}}>
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #E2E8F0",zIndex:20,boxShadow:"0 -2px 8px rgba(0,0,0,.06)",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+          <div style={{display:"flex",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
             {navItems.map(({id,short,I})=>{const a=page===id;return(
-              <button key={id} onClick={()=>go(id)} style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"8px 2px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:8,fontWeight:700,fontFamily:"inherit"}}>
-                <I size={15}/><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{short}</span>
+              <button key={id} onClick={()=>go(id)} style={{flexShrink:0,minWidth:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 6px 8px",border:"none",cursor:"pointer",background:"transparent",color:a?"#2563EB":"#94A3B8",borderTop:a?"2px solid #2563EB":"2px solid transparent",fontSize:9,fontWeight:700,fontFamily:"inherit"}}>
+                <I size={17}/><span style={{whiteSpace:"nowrap"}}>{short}</span>
               </button>
-            )})
-          </div>
+            )})}</div>
         </div>
       </div>
     )
