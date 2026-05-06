@@ -265,8 +265,9 @@ export default function App(){
     return null
   }
 
+  const [menuOpen,setMenuOpen]=useState(false)
+
   if(mobile){
-    const [menuOpen,setMenuOpen]=React.useState(false)
     const currentNav=navItems.find(n=>n.id===page)||navItems[0]
     return(
       <div style={{background:C.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif"}}>
