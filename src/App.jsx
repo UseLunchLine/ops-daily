@@ -410,8 +410,9 @@ function Login(){
 
 function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
   const [announcements,setAnnouncements]=useState([])
+  const [dismissedAnns,setDismissedAnns]=useState([])
   useEffect(()=>{
-    supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(3).then(({data})=>{if(data)setAnnouncements(data)})
+    supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(5).then(({data})=>{if(data)setAnnouncements(data)})
   },[])
   const [dateFrom,setDateFrom]=useState(TODAY)
   const [dateTo,setDateTo]=useState(TODAY)
@@ -457,10 +458,12 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn>}/>
-      {announcements.length>0&&(
+      {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).length>0&&(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
-          {announcements.map(ann=>{
+          {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).map(ann=>{
             const at=({general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}})[ann.type]||{color:"#2563EB",bg:"#EFF6FF"}
+            const isExpired=ann.expires_at&&new Date(ann.expires_at)<new Date()
+            if(isExpired)return null
             return(
               <div key={ann.id} style={{background:at.bg,border:"1px solid "+at.color+"33",borderLeft:"4px solid "+at.color,borderRadius:R.lg,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
                 <span style={{fontSize:20,flexShrink:0}}>📢</span>
@@ -468,10 +471,14 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
                   <div style={{fontWeight:800,fontSize:13,color:at.color,marginBottom:2}}>{ann.title}</div>
                   {ann.body&&<div style={{fontSize:12,color:at.color,opacity:.8,lineHeight:1.5}}>{ann.body}</div>}
                 </div>
-                <span style={{fontSize:11,color:at.color,opacity:.6,flexShrink:0,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                  {ann.expires_at&&<span style={{fontSize:10,color:at.color,opacity:.5}}>Expires {fd(ann.expires_at.slice(0,10))}</span>}
+                  <span style={{fontSize:11,color:at.color,opacity:.6,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
+                  <button onClick={()=>setDismissedAnns(p=>[...p,ann.id])} style={{background:"transparent",border:"none",cursor:"pointer",color:at.color,opacity:.5,display:"flex",padding:2,fontSize:16,lineHeight:1}}>✕</button>
+                </div>
               </div>
             )
-          })}
+          }).filter(Boolean)}
         </div>
       )}
 
@@ -768,7 +775,31 @@ function ReportPage({recaps,schools,users,noHeader=false}){
     }).filter(Boolean))
   }
 
-  const getAISummary=async()=>{
+  const printReport=()=>{
+    if(!rep||rep.length===0)return
+    const [yr,mo]=month.split("-").map(Number)
+    const monthName=new Date(yr,mo-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"})
+    const rows=rep.map(({s,total,counts,resolved,notes})=>`
+      <div style="border:1px solid #E2E8F0;border-radius:8px;margin-bottom:16px;overflow:hidden;page-break-inside:avoid;">
+        <div style="background:#1E293B;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <span style="color:#fff;font-weight:800;font-size:14px;">${s.name}</span>
+            <span style="margin-left:8px;background:${TC[s.type]?.bg||"#F1F5F9"};color:${TC[s.type]?.tx||"#334155"};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">${TL[s.type]||s.type}</span>
+          </div>
+          <span style="color:#94A3B8;font-size:12px;">${total} recap${total!==1?"s":""}</span>
+        </div>
+        <div style="padding:14px 16px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
+            ${STATS.slice(0,3).map(st=>`<div style="text-align:center;padding:10px;border-radius:6px;background:${st.l};border:1px solid ${st.b};"><div style="font-size:22px;font-weight:900;color:${st.c};">${counts[st.id]||0}</div><div style="font-size:10px;font-weight:600;color:${st.t};margin-top:2px;">${st.label}</div></div>`).join("")}
+            <div style="text-align:center;padding:10px;border-radius:6px;background:#F0FDF4;border:1px solid #BBF7D0;"><div style="font-size:22px;font-weight:900;color:#16A34A;">${resolved}</div><div style="font-size:10px;font-weight:600;color:#15803D;margin-top:2px;">Resolved</div></div>
+          </div>
+          ${notes.length>0?`<div style="margin-top:8px;"><div style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;margin-bottom:6px;">Notes</div>${notes.map(n=>`<div style="font-size:12px;color:#475569;margin-bottom:4px;line-height:1.6;"><span style="color:#94A3B8;font-size:11px;">${fd(n.date)}</span> ${n.note}${n.by?` — ${n.by}`:""}</div>`).join("")}</div>`:""}
+        </div>
+      </div>`).join("")
+    const win=window.open("","_blank")
+    win.document.write(`<!DOCTYPE html><html><head><title>Monthly Report - ${monthName}</title><style>body{font-family:system-ui,sans-serif;padding:32px;max-width:800px;margin:0 auto;color:#1E293B;}h1{font-size:22px;font-weight:900;margin-bottom:4px;}h2{font-size:14px;font-weight:500;color:#64748B;margin-bottom:24px;}@media print{body{padding:16px;}}</style></head><body><h1>Monthly Report — ${monthName}</h1><h2>South Bend Community School Corporation · Food Service Operations</h2>${rows}<script>window.onload=()=>window.print()<\/script></body></html>`)
+    win.document.close()
+  }
     if(!rep||rep.length===0)return
     setAiLoading(true)
     const lines=rep.map(({s,total,counts,resolved})=>s.name+": "+total+" recaps -- "+(counts.green||0)+" All Good, "+(counts.yellow||0)+" Minor Issues, "+(counts.red||0)+" Major Problems, "+resolved+" resolved.")
@@ -786,7 +817,7 @@ function ReportPage({recaps,schools,users,noHeader=false}){
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <Btn onClick={gen} sm>Generate</Btn>
           {rep&&rep.length>0&&<AIBtn onClick={getAISummary} loading={aiLoading}>{aiLoading?"Writing...":"AI Narrative"}</AIBtn>}
-          {rep&&<Btn onClick={()=>window.print()} variant="outline" sm><Printer size={12}/> Print</Btn>}
+          {rep&&<Btn onClick={printReport} variant="outline" sm><Printer size={12}/> Print Report</Btn>}
         </div>
       </Box>
       {aiSummary&&<AISummaryBox text={aiSummary}/>}
@@ -794,9 +825,12 @@ function ReportPage({recaps,schools,users,noHeader=false}){
         {rep.length===0?<Box style={{textAlign:"center",padding:32,color:C.textMuted}}>No recaps found.</Box>
         :rep.map(({s,total,counts,resolved,notes})=>{const tc=TC[s.type];return(
           <Box key={s.id} style={{padding:0,overflow:"hidden"}}>
-            <div style={{background:"#1E293B",padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{color:"#fff",fontWeight:800,fontSize:14}}>{s.name}</span>{tc&&<Pill bg={tc.bg} tx={tc.tx}>{TL[s.type]}</Pill>}</div>
-              <span style={{color:"#94A3B8",fontSize:13}}>{total} recap{total!==1?"s":""}</span>
+            <div style={{background:"#1E293B",padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",flex:1}}>
+                <span style={{color:"#fff",fontWeight:800,fontSize:14}}>{s.name}</span>
+                {tc&&<span style={{background:tc.bg,color:tc.tx,padding:"2px 8px",borderRadius:4,fontSize:11,fontWeight:700,flexShrink:0}}>{TL[s.type]}</span>}
+              </div>
+              <span style={{color:"#94A3B8",fontSize:13,flexShrink:0}}>{total} recap{total!==1?"s":""}</span>
             </div>
             <div style={{padding:"16px 18px"}}>
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
@@ -828,10 +862,19 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
   const [fT,setFT]=useState("")
   const sById=id=>schools.find(s=>s.id===id)
 
-  // Get staff for selected school from directory
+  // Only show CSAs, PPAs, Kitchen Managers and temp staff in calloff dropdown
+  const calloffRoles=["csa","ppa","kitchen_manager"]
+  const eligibleStaff=directory.filter(d=>
+    d.is_active!==false&&(
+      calloffRoles.includes((d.role_type||"").toLowerCase())||
+      calloffRoles.includes((d.position||"").toLowerCase())||
+      d.is_temp===true
+    )
+  )
+
   const schoolStaff=form.school_id
-    ?directory.filter(d=>d.is_active!==false&&(d.school_ids||[]).includes(form.school_id))
-    :directory.filter(d=>d.is_active!==false)
+    ?eligibleStaff.filter(d=>(d.school_ids||[]).includes(form.school_id))
+    :eligibleStaff
 
   const handleStaffSelect=(e)=>{
     const name=e.target.value
@@ -865,11 +908,10 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
             <L>Staff Name *</L>
             <select value={form.staff_name} onChange={handleStaffSelect} style={{...inp,background:"#fff"}}>
               <option value="">-- Select Staff Member --</option>
-              {schoolStaff.length>0?(
-                schoolStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}</option>)
-              ):(
-                directory.filter(d=>d.is_active!==false).map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}</option>)
-              )}
+              {schoolStaff.length>0
+                ?schoolStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}{s.is_temp?" (Temp)":""}</option>)
+                :eligibleStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}{s.is_temp?" (Temp)":""}</option>)
+              }
               <option value="__manual__">+ Enter name manually</option>
             </select>
             {form.staff_name==="__manual__"&&(
@@ -1788,9 +1830,8 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const [tab,setTab]=useState(kmAnnouncementsOnly?"announcements":isKM?"report":"issues")
   const [issues,setIssues]=useState([])
   const [announcements,setAnnouncements]=useState([])
-  const [messages,setMessages]=useState([])
   const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
-  const [annForm,setAnnForm]=useState({title:"",body:"",type:"general"})
+  const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",expires_at:""})
   const [annModal,setAnnModal]=useState(false)
   const [loading,setLoading]=useState(false)
   const [mobile,setMobile]=useState(window.innerWidth<768)
@@ -1799,7 +1840,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const userSchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
   const mySchool=schools.find(s=>userSchoolIds.includes(s.id))
 
-  useEffect(()=>{loadIssues();loadAnnouncements();loadMessages()},[])
+  useEffect(()=>{loadIssues();loadAnnouncements()},[])
 
   const loadIssues=async()=>{
     const{data}=await supabase.from("kitchen_issues").select("*").order("created_at",{ascending:false})
@@ -1809,11 +1850,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     const{data}=await supabase.from("announcements").select("*").order("created_at",{ascending:false})
     if(data)setAnnouncements(data)
   }
-  const loadMessages=async()=>{
-    const{data}=await supabase.from("kitchen_messages").select("*").order("created_at",{ascending:false})
-    if(data)setMessages(data)
-  }
-
   const submitIssue=async()=>{
     if(!form.title.trim()){toast.show("Please add a title.","error");return}
     const schoolId=canManageAll?form.school_id:(mySchool?.id||"")
@@ -1845,7 +1881,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     const na={id:uid(),...annForm,title:annForm.title.trim(),created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString()}
     await supabase.from("announcements").insert(na)
     setAnnouncements(p=>[na,...p])
-    setAnnForm({title:"",body:"",type:"general"})
+    setAnnForm({title:"",body:"",type:"general",expires_at:""})
     setAnnModal(false)
     toast.show("Announcement posted!")
   }
@@ -1853,8 +1889,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
   const openIssues=myIssues.filter(i=>!i.resolved)
   const resolvedIssues=myIssues.filter(i=>i.resolved)
-  const myMessages=isKM?messages.filter(m=>!m.to_school_id||userSchoolIds.includes(m.to_school_id)):messages
-
   // KM tabs: Report, Announcements, Inbox
   // Others: Issues, Announcements, Send Message
   const kmTabs=[
@@ -1879,7 +1913,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         action={
           <div style={{display:"flex",gap:8}}>
             {canManageAll&&<Btn onClick={()=>setAnnModal(true)} sm><Plus size={13}/> Announcement</Btn>}
-            {canManageAll&&<Btn onClick={()=>setMsgModal(true)} variant="outline" sm><Plus size={13}/> Message Kitchen</Btn>}
           </div>
         }
       />
@@ -2025,27 +2058,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         </div>
       )}
 
-      {/* INBOX - KM sees messages */}
-      {tab==="inbox"&&isKM&&(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {myMessages.length===0?(
-            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📬</div><div style={{fontWeight:700}}>No messages yet.</div><div style={{fontSize:13,color:C.textLight,marginTop:6}}>Messages from Admin, Directors and Supervisors will appear here.</div></Box>
-          ):myMessages.map(msg=>(
-            <KitchenMessageCard key={msg.id} msg={msg} user={user} onReply={async(body)=>{
-              const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,to_school_id:msg.to_school_id,body:"↩ Re: "+msg.body.slice(0,30)+"...\n\n"+body,created_at:new Date().toISOString(),read:false,reply_to:msg.id}
-              await supabase.from("kitchen_messages").insert(nm)
-              setMessages(p=>[nm,...p])
-              toast.show("Reply sent!")
-            }} onAck={async()=>{
-              await supabase.from("kitchen_messages").update({read:true}).eq("id",msg.id)
-              setMessages(p=>p.map(x=>x.id===msg.id?{...x,read:true}:x))
-              toast.show("Acknowledged!")
-            }}/>
-          ))}
-        </div>
-      )}
-
-      {/* MESSAGES - staff sends to kitchens, KM sees inbox */}
+      {/* MESSAGES - handles both staff and KM */}
       {(tab==="messages"||tab==="inbox")&&(
         <KitchenMessagesTab user={user} schools={schools} supaUsers={supaUsers} toast={toast} isKM={isKM} mySchoolIds={userSchoolIds}/>
       )}
@@ -2068,28 +2081,13 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
                 </div>
               </div>
               <div><L>Message</L><textarea value={annForm.body} onChange={e=>setAnnForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Write your announcement..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+              <div><L>Expires On (optional)</L><input type="date" value={annForm.expires_at} onChange={e=>setAnnForm(f=>({...f,expires_at:e.target.value}))} style={{...inp}} min={TODAY}/><div style={{fontSize:11,color:C.textMuted,marginTop:4}}>Leave blank to show indefinitely. Set a date to auto-hide after that day.</div></div>
               <div style={{display:"flex",gap:10}}><Btn onClick={()=>setAnnModal(false)} variant="outline">Cancel</Btn><Btn onClick={submitAnn} disabled={!annForm.title.trim()}>Post</Btn></div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MESSAGE MODAL */}
-      {msgModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
-          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
-              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Send Message to Kitchen</span>
-              <button onClick={()=>setMsgModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
-            </div>
-            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
-              <div><L>Send To</L><SG schools={schools} value={msgForm.to_school_id} onChange={e=>setMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
-              <div><L>Message *</L><textarea value={msgForm.body} onChange={e=>setMsgForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Type your message..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
-              <div style={{display:"flex",gap:10}}><Btn onClick={()=>setMsgModal(false)} variant="outline">Cancel</Btn><Btn onClick={sendMessage} disabled={!msgForm.body.trim()}>Send</Btn></div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
