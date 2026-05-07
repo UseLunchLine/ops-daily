@@ -246,17 +246,14 @@ export default function App(){
 
   const navItems=isKM?[
     {id:"kitchen",label:"My Kitchen",short:"Kitchen",I:ClipboardList},
-    {id:"inbox",label:"Messages",short:"Messages",I:StickyNote},
-    {id:"directory",label:"Directory",short:"Directory",I:BookOpen},
+    {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
   ]:[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
     {id:"submit",label:"Submit Recap",short:"Submit",I:PlusCircle},
-    {id:"school",label:"School Detail",short:"Schools",I:Building2},
-    ...(perms.report?[{id:"report",label:"Monthly Report",short:"Reports",I:BarChart3}]:[]),
+    {id:"schools",label:"Schools",short:"Schools",I:Building2},
     ...(perms.calloffs?[{id:"calloffs",label:"Call-Off Tracking",short:"Call-Offs",I:ClipboardList}]:[]),
-    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:CheckSquare},
-    {id:"inbox",label:"Kitchen Messages",short:"Messages",I:StickyNote},
-    {id:"events",label:"Calendar & Events",short:"Calendar",I:CalendarDays},
+    {id:"kitchen",label:"Kitchen",short:"Kitchen",I:CheckSquare},
+    {id:"events",label:"Calendar",short:"Calendar",I:CalendarDays},
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
     ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
@@ -274,8 +271,6 @@ export default function App(){
     if(page==="map")return <MapPage {...props}/>
     if(page==="events")return <EventsPage {...props}/>
     if(page==="kitchen")return <KitchenPage {...props}/>
-    if(page==="announcements")return <KitchenPage {...props} kmAnnouncementsOnly={true}/>
-    if(page==="inbox")return <InboxPage {...props}/>
     if(page==="admin") return <AdminPage {...props}/>
     return null
   }
@@ -1748,9 +1743,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const [messages,setMessages]=useState([])
   const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
   const [annForm,setAnnForm]=useState({title:"",body:"",type:"general"})
-  const [msgForm,setMsgForm]=useState({to_school_id:"",body:""})
   const [annModal,setAnnModal]=useState(false)
-  const [msgModal,setMsgModal]=useState(false)
   const [loading,setLoading]=useState(false)
   const [mobile,setMobile]=useState(window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
@@ -1809,16 +1802,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     toast.show("Announcement posted!")
   }
 
-  const sendMessage=async()=>{
-    if(!msgForm.body.trim())return
-    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,to_school_id:msgForm.to_school_id||null,body:msgForm.body.trim(),created_at:new Date().toISOString(),read:false}
-    await supabase.from("kitchen_messages").insert(nm)
-    setMessages(p=>[nm,...p])
-    setMsgForm({to_school_id:"",body:""})
-    setMsgModal(false)
-    toast.show("Message sent!")
-  }
-
   const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
   const openIssues=myIssues.filter(i=>!i.resolved)
   const resolvedIssues=myIssues.filter(i=>i.resolved)
@@ -1826,8 +1809,19 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   // KM tabs: Report, Announcements, Inbox
   // Others: Issues, Announcements, Send Message
-  const kmTabs=[{id:"report",label:"Report Issue"},{id:"announcements",label:"Announcements"},{id:"calendar",label:"Calendar"},{id:"inbox",label:"Inbox"}]
-  const staffTabs=[{id:"issues",label:"Open Issues"+(openIssues.length>0?" ("+openIssues.length+")":"")},{id:"resolved",label:"Resolved"},{id:"announcements",label:"Announcements"},{id:"messages",label:"Messages"}]
+  const kmTabs=[
+    {id:"report",label:"📋 Report Issue"},
+    {id:"issues",label:"🔴 Issues"+(myIssues.filter(i=>i.status!=="resolved").length>0?" ("+myIssues.filter(i=>i.status!=="resolved").length+")":"")},
+    {id:"announcements",label:"📢 Announcements"},
+    {id:"inbox",label:"💬 Messages"},
+    {id:"calendar",label:"📅 Calendar"},
+  ]
+  const staffTabs=[
+    {id:"issues",label:"🔴 Open"+(openIssues.length>0?" ("+openIssues.length+")":"")},
+    {id:"resolved",label:"✅ Resolved"},
+    {id:"announcements",label:"📢 Announcements"},
+    {id:"messages",label:"💬 Messages"},
+  ]
 
   return(
     <div style={{padding:"24px 20px"}}>
@@ -2003,28 +1997,9 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         </div>
       )}
 
-      {/* MESSAGES - Staff sends to kitchens */}
-      {tab==="messages"&&canManageAll&&(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}><Btn onClick={()=>setMsgModal(true)} sm><Plus size={13}/> Send Message</Btn></div>
-          {myMessages.length===0?(
-            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontWeight:700}}>No messages sent yet.</div></Box>
-          ):myMessages.map(msg=>{
-            const sch=schools.find(s=>s.id===msg.to_school_id)
-            return(
-              <Box key={msg.id} style={{padding:14,borderLeft:"3px solid #7C3AED"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <span style={{fontWeight:700,fontSize:13,color:C.text}}>To: {sch?.name||"All Kitchens"}</span>
-                    <span style={{fontSize:11,color:C.textMuted}}>from {msg.from_name}</span>
-                  </div>
-                  <span style={{fontSize:11,color:C.textLight}}>{ft(msg.created_at)}</span>
-                </div>
-                <div style={{fontSize:13,color:C.textMuted,lineHeight:1.6}}>{msg.body}</div>
-              </Box>
-            )
-          })}
-        </div>
+      {/* MESSAGES - staff sends to kitchens, KM sees inbox */}
+      {(tab==="messages"||tab==="inbox")&&(
+        <KitchenMessagesTab user={user} schools={schools} supaUsers={supaUsers} toast={toast} isKM={isKM} mySchoolIds={userSchoolIds}/>
       )}
 
       {/* ANNOUNCEMENT MODAL */}
@@ -2172,39 +2147,47 @@ function KitchenMessageCard({msg,user,onReply,onAck}){
   )
 }
 
-function InboxPage({user,schools,supaUsers,toast}){
+// Combined Schools page - School Detail + Monthly Report in sub-tabs
+function SchoolsPage({ctx,schools,recaps,setRecaps,users,supaUsers,toast,user,isAdmin}){
+  const [tab,setTab]=useState(ctx?"detail":"detail")
+  const [selSchool,setSelSchool]=useState(ctx||"")
+  const [mobile,setMobile]=useState(window.innerWidth<768)
+  useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
+
+  const props={ctx:selSchool,schools,recaps,setRecaps,users,supaUsers,toast,user,isAdmin}
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="Schools" subtitle="School recap history and monthly performance reports"/>
+      <TabBar tabs={[{id:"detail",label:"🏫 School Detail"},{id:"report",label:"📊 Monthly Report"}]} active={tab} set={setTab}/>
+      {tab==="detail"&&<SchoolPage {...props}/>}
+      {tab==="report"&&<ReportPage recaps={recaps} schools={schools} users={[...users,...supaUsers]}/>}
+    </div>
+  )
+}
+
+// Shared messaging component used inside Kitchen Hub for both KM and staff
+function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[]}){
   const [messages,setMessages]=useState([])
   const [loading,setLoading]=useState(true)
   const [newMsgModal,setNewMsgModal]=useState(false)
   const [newMsgForm,setNewMsgForm]=useState({to_school_id:"",body:""})
   const [replyText,setReplyText]=useState({})
   const [showReply,setShowReply]=useState({})
-  const isKM=user.role==="kitchen_manager"
   const canSend=["admin","director","supervisor","chef"].includes(user.role)
-  const mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
 
-  useEffect(()=>{loadMessages()},[])
+  useEffect(()=>{
+    supabase.from("kitchen_messages").select("*").order("created_at",{ascending:true}).then(({data})=>{
+      if(data)setMessages(data)
+      setLoading(false)
+    })
+  },[])
 
-  const loadMessages=async()=>{
-    const{data}=await supabase.from("kitchen_messages").select("*").order("created_at",{ascending:true})
-    if(data)setMessages(data)
-    setLoading(false)
-  }
-
-  // Group into threads: root messages + their replies
   const threads=messages
-    .filter(m=>!m.reply_to) // root messages only
-    .map(root=>({
-      root,
-      replies:messages.filter(m=>m.reply_to===root.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))
-    }))
+    .filter(m=>!m.reply_to)
+    .map(root=>({root,replies:messages.filter(m=>m.reply_to===root.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))}))
     .filter(t=>{
-      if(isKM){
-        // KM sees threads where their school is involved
-        return !t.root.to_school_id||mySchoolIds.includes(t.root.to_school_id)||
-               t.root.from_user_id===user.id||
-               t.replies.some(r=>r.from_user_id===user.id)
-      }
+      if(isKM) return !t.root.to_school_id||mySchoolIds.includes(t.root.to_school_id)||t.root.from_user_id===user.id||t.replies.some(r=>r.from_user_id===user.id)
       return true
     })
     .sort((a,b)=>new Date(b.root.created_at)-new Date(a.root.created_at))
@@ -2236,19 +2219,16 @@ function InboxPage({user,schools,supaUsers,toast}){
     toast.show("Acknowledged!")
   }
 
-  const unread=messages.filter(m=>!m.read&&m.from_user_id!==user.id&&(isKM?(!m.to_school_id||mySchoolIds.includes(m.to_school_id)):true)).length
+  const roleColors={admin:"#4527A0",director:"#283593",supervisor:"#01579B",chef:"#E65100",kitchen_manager:"#15803D"}
 
-  const MsgBubble=({msg,isReply=false})=>{
+  const MsgBubble=({msg})=>{
     const isOwn=msg.from_user_id===user.id
-    const roleColors={admin:"#4527A0",director:"#283593",supervisor:"#01579B",chef:"#E65100",kitchen_manager:"#15803D"}
     const roleColor=roleColors[msg.from_role]||C.textMuted
     return(
-      <div style={{display:"flex",flexDirection:"column",alignItems:isOwn?"flex-end":"flex-start",marginBottom:10,paddingLeft:isReply?16:0}}>
-        <div style={{fontSize:10,fontWeight:700,color:roleColor,marginBottom:3,paddingLeft:2,paddingRight:2}}>{isOwn?"You":msg.from_name} {msg.from_role&&"· "+msg.from_role}</div>
-        <div style={{maxWidth:"80%",background:isOwn?"#2563EB":"#F1F5F9",color:isOwn?"#fff":C.text,borderRadius:isOwn?"14px 14px 4px 14px":"14px 14px 14px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.6,wordBreak:"break-word"}}>
-          {msg.body}
-        </div>
-        <div style={{fontSize:10,color:C.textLight,marginTop:3,display:"flex",alignItems:"center",gap:6}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:isOwn?"flex-end":"flex-start",marginBottom:8}}>
+        <div style={{fontSize:10,fontWeight:700,color:roleColor,marginBottom:2,paddingLeft:2,paddingRight:2}}>{isOwn?"You":msg.from_name}{msg.from_role&&" · "+msg.from_role}</div>
+        <div style={{maxWidth:"78%",background:isOwn?"#2563EB":"#F1F5F9",color:isOwn?"#fff":C.text,borderRadius:isOwn?"14px 14px 4px 14px":"14px 14px 14px 4px",padding:"9px 13px",fontSize:13,lineHeight:1.6,wordBreak:"break-word"}}>{msg.body}</div>
+        <div style={{fontSize:10,color:C.textLight,marginTop:2,display:"flex",gap:6}}>
           {ft(msg.created_at)}
           {msg.acknowledged&&<span style={{color:"#15803D",fontWeight:700}}>✓ Acknowledged</span>}
         </div>
@@ -2256,14 +2236,10 @@ function InboxPage({user,schools,supaUsers,toast}){
     )
   }
 
-  return(
-    <div style={{padding:"24px 20px"}}>
-      <PageHeader
-        title="Kitchen Messages"
-        subtitle={unread>0?unread+" unread message"+(unread!==1?"s":""):"All conversations"}
-        action={canSend&&<Btn onClick={()=>setNewMsgModal(true)}><Plus size={14}/> New Message</Btn>}
-      />
+  const unread=messages.filter(m=>!m.read&&m.from_user_id!==user.id&&(isKM?(!m.to_school_id||mySchoolIds.includes(m.to_school_id)):true)).length
 
+  return(
+    <div>
       {newMsgModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
           <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
@@ -2280,50 +2256,43 @@ function InboxPage({user,schools,supaUsers,toast}){
         </div>
       )}
 
-      {loading?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>Loading...</Box>
-      :threads.length===0?<Box style={{textAlign:"center",padding:48,color:C.textMuted}}><div style={{fontSize:36,marginBottom:10}}>💬</div><div style={{fontWeight:700,fontSize:15}}>No messages yet</div>{canSend&&<div style={{marginTop:14}}><Btn onClick={()=>setNewMsgModal(true)} sm><Plus size={13}/> Start a Conversation</Btn></div>}</Box>
-      :<div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontSize:13,color:C.textMuted,fontWeight:500}}>{unread>0?<span style={{color:"#2563EB",fontWeight:700}}>{unread} unread</span>:threads.length+" conversation"+(threads.length!==1?"s":"")}</div>
+        {canSend&&<Btn onClick={()=>setNewMsgModal(true)} sm><Plus size={13}/> New Message</Btn>}
+      </div>
+
+      {loading?<Box style={{textAlign:"center",padding:32,color:C.textMuted}}>Loading...</Box>
+      :threads.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontWeight:700}}>No messages yet</div>{canSend&&<div style={{marginTop:12}}><Btn onClick={()=>setNewMsgModal(true)} sm>Send First Message</Btn></div>}</Box>
+      :<div style={{display:"flex",flexDirection:"column",gap:12}}>
         {threads.map(({root,replies})=>{
           const sch=schools.find(s=>s.id===root.to_school_id)
           const allMsgs=[root,...replies]
           const hasUnread=allMsgs.some(m=>!m.read&&m.from_user_id!==user.id)
           const anyAcked=allMsgs.some(m=>m.acknowledged)
-          const kmReply=replies.find(r=>r.from_role==="kitchen_manager")
-          const canAckThis=isKM&&!root.acknowledged&&root.from_user_id!==user.id
+          const kmReplied=replies.some(r=>r.from_role==="kitchen_manager")
+          const canAck=isKM&&!root.acknowledged&&root.from_user_id!==user.id
           return(
             <Box key={root.id} style={{padding:0,overflow:"hidden",border:"1px solid "+(hasUnread?"#BFDBFE":"#E2E8F0")}}>
-              {/* Thread header */}
-              <div style={{padding:"10px 16px",background:hasUnread?"#EFF6FF":"#F8FAFC",borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+              <div style={{padding:"9px 16px",background:hasUnread?"#EFF6FF":"#F8FAFC",borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   <span style={{fontWeight:700,fontSize:13,color:C.text}}>📍 {sch?.name||"All Kitchens"}</span>
-                  {hasUnread&&<span style={{background:"#2563EB",color:"#fff",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:R.full}}>NEW</span>}
-                  {anyAcked&&<span style={{background:"#F0FDF4",color:"#15803D",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:R.full}}>✓ Acknowledged</span>}
-                  {kmReply&&!isKM&&<span style={{background:"#FFF3E0",color:"#E65100",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:R.full}}>Kitchen replied</span>}
-                  <span style={{fontSize:10,color:C.textLight}}>{replies.length} repl{replies.length===1?"y":"ies"}</span>
+                  {hasUnread&&<span style={{background:"#2563EB",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:R.full}}>NEW</span>}
+                  {anyAcked&&<span style={{background:"#F0FDF4",color:"#15803D",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:R.full}}>✓ Acknowledged</span>}
+                  {kmReplied&&!isKM&&<span style={{background:"#FFF3E0",color:"#E65100",fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:R.full}}>Kitchen replied</span>}
                 </div>
-                <span style={{fontSize:11,color:C.textLight}}>{fd(root.created_at?.slice(0,10)||TODAY)}</span>
+                <span style={{fontSize:10,color:C.textLight}}>{fd(root.created_at?.slice(0,10)||TODAY)} · {replies.length} repl{replies.length===1?"y":"ies"}</span>
               </div>
-              {/* Messages */}
-              <div style={{padding:"14px 16px"}}>
-                {allMsgs.map((m,i)=><MsgBubble key={m.id} msg={m} isReply={i>0}/>)}
+              <div style={{padding:"12px 16px"}}>
+                {allMsgs.map(m=><MsgBubble key={m.id} msg={m}/>)}
               </div>
-              {/* Actions */}
-              <div style={{padding:"8px 16px",borderTop:"1px solid #F1F5F9",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                {canAckThis&&(
-                  <button onClick={()=>acknowledge(root.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BBF7D0",background:"#F0FDF4",color:"#15803D",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    <Check size={11}/>Acknowledge
-                  </button>
-                )}
-                <button onClick={()=>setShowReply(p=>({...p,[root.id]:!p[root.id]}))} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  ↩ Reply
-                </button>
+              <div style={{padding:"8px 16px",borderTop:"1px solid #F1F5F9",display:"flex",gap:8,flexWrap:"wrap"}}>
+                {canAck&&<button onClick={()=>acknowledge(root.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BBF7D0",background:"#F0FDF4",color:"#15803D",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}><Check size={11}/>Acknowledge</button>}
+                <button onClick={()=>setShowReply(p=>({...p,[root.id]:!p[root.id]}))} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↩ Reply</button>
               </div>
               {showReply[root.id]&&(
-                <div style={{padding:"0 16px 14px"}}>
-                  <div style={{display:"flex",gap:8}}>
-                    <textarea value={replyText[root.id]||""} onChange={e=>setReplyText(p=>({...p,[root.id]:e.target.value}))} rows={2} placeholder="Type your reply..." style={{...inp,flex:1,resize:"none"}}/>
-                    <button onClick={()=>sendReply(root.id,root.to_school_id)} disabled={!(replyText[root.id]||"").trim()} style={{padding:"0 16px",borderRadius:R.md,background:"#2563EB",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Send</button>
-                  </div>
+                <div style={{padding:"0 16px 12px",display:"flex",gap:8}}>
+                  <textarea value={replyText[root.id]||""} onChange={e=>setReplyText(p=>({...p,[root.id]:e.target.value}))} rows={2} placeholder="Type your reply..." style={{...inp,flex:1,resize:"none"}}/>
+                  <button onClick={()=>sendReply(root.id,root.to_school_id)} disabled={!(replyText[root.id]||"").trim()} style={{padding:"0 14px",borderRadius:R.md,background:"#2563EB",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Send</button>
                 </div>
               )}
             </Box>
