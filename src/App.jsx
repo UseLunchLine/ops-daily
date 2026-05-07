@@ -181,8 +181,9 @@ export default function App(){
       }
     }).catch(()=>setAuthLoading(false))
 
-    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
-      if(session?.user){
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
+      if(event==="SIGNED_OUT"){setUser(null);return}
+      if(event==="SIGNED_IN"&&session?.user){
         supabase.from("app_users").select("*").eq("id",session.user.id).maybeSingle().then(({data})=>{
           setUser({id:session.user.id,name:data?.name||session.user.email.split("@")[0],email:session.user.email,role:data?.role||"admin",school_ids:data?.school_ids||[],is_active:true})
           setAuthLoading(false)
@@ -190,9 +191,6 @@ export default function App(){
           setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true,school_ids:[]})
           setAuthLoading(false)
         })
-      } else {
-        setUser(null)
-        setAuthLoading(false)
       }
     })
     return()=>subscription.unsubscribe()
@@ -223,7 +221,7 @@ export default function App(){
     }
     loadData()
   },[])
-  const [page,setPage]=useState(()=>sessionStorage.getItem('ops_page')||"dashboard")
+  const [page,setPage]=useState(()=>sessionStorage.getItem('ops_page')||(user?.role=="kitchen_manager"?"kitchen":"dashboard"))
   const [ctx,setCtx]=useState(null)
   const [sideOpen,setSideOpen]=useState(false)
   const [menuOpen,setMenuOpen]=useState(false)
@@ -247,20 +245,20 @@ export default function App(){
   const uById=id=>users.find(u=>u.id===id)||supaUsers.find(u=>u.id===id)||{name:"--"}
 
   const navItems=isKM?[
-    {id:"kitchen",label:"Kitchen Hub",short:"Hub",I:ClipboardList},
-    {id:"directory",label:"Directory",short:"Dir",I:BookOpen},
-    {id:"announcements",label:"Announcements",short:"News",I:CalendarDays},
+    {id:"kitchen",label:"My Kitchen",short:"Kitchen",I:ClipboardList},
+    {id:"inbox",label:"Messages",short:"Messages",I:StickyNote},
+    {id:"directory",label:"Directory",short:"Directory",I:BookOpen},
   ]:[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
     {id:"submit",label:"Submit Recap",short:"Submit",I:PlusCircle},
-    {id:"school",label:"School Detail",short:"School",I:Building2},
-    ...(perms.report?[{id:"report",label:"Monthly Report",short:"Report",I:BarChart3}]:[]),
-    ...(perms.calloffs?[{id:"calloffs",label:"Call-Offs",short:"Calls",I:ClipboardList}]:[]),
-    {id:"directory",label:"Directory",short:"Dir",I:BookOpen},
-    {id:"map",label:"School Map",short:"Map",I:Map},
-    {id:"events",label:"Meetings & Events",short:"Events",I:CalendarDays},
-    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
+    {id:"school",label:"School Detail",short:"Schools",I:Building2},
+    ...(perms.report?[{id:"report",label:"Monthly Report",short:"Reports",I:BarChart3}]:[]),
+    ...(perms.calloffs?[{id:"calloffs",label:"Call-Off Tracking",short:"Call-Offs",I:ClipboardList}]:[]),
+    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:CheckSquare},
     {id:"inbox",label:"Kitchen Messages",short:"Messages",I:StickyNote},
+    {id:"events",label:"Calendar & Events",short:"Calendar",I:CalendarDays},
+    {id:"map",label:"School Map",short:"Map",I:Map},
+    {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
     ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
   ]
 
@@ -1723,6 +1721,13 @@ const KITCHEN_ISSUE_TYPES=[
   {id:"other",label:"Other Issue",icon:"📋",color:"#64748B",bg:"#F8FAFC"},
 ]
 const KIT=Object.fromEntries(KITCHEN_ISSUE_TYPES.map(t=>[t.id,t]))
+const ISSUE_STATUS={
+  open:{label:"Open",color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA",icon:"🔴"},
+  acknowledged:{label:"Acknowledged",color:"#D97706",bg:"#FFFBEB",bd:"#FDE68A",icon:"👀"},
+  in_progress:{label:"In Progress",color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE",icon:"🔧"},
+  resolved:{label:"Resolved",color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0",icon:"✅"},
+}
+
 const ANN_TYPES={
   general:{label:"General",color:"#2563EB",bg:"#EFF6FF"},
   weather:{label:"Weather Delay",color:"#0891B2",bg:"#E0F2FE"},
@@ -1782,11 +1787,17 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     setLoading(false)
   }
 
-  const resolveIssue=async(issue,note)=>{
-    await supabase.from("kitchen_issues").update({resolved:true,resolution_note:note,resolved_at:new Date().toISOString()}).eq("id",issue.id)
-    setIssues(p=>p.map(x=>x.id===issue.id?{...x,resolved:true,resolution_note:note}:x))
-    toast.show("Issue resolved!")
+  const updateStatus=async(issue,newStatus,note="")=>{
+    const update={status:newStatus,resolved:newStatus==="resolved"}
+    if(newStatus==="acknowledged"){update.acknowledged_by=user.id;update.acknowledged_by_name=user.name||user.email;update.acknowledged_at=new Date().toISOString()}
+    if(newStatus==="in_progress"){update.in_progress_by=user.id;update.in_progress_by_name=user.name||user.email}
+    if(newStatus==="resolved"){update.resolution_note=note;update.resolved_at=new Date().toISOString();update.resolved_by=user.id;update.resolved_by_name=user.name||user.email}
+    await supabase.from("kitchen_issues").update(update).eq("id",issue.id)
+    setIssues(p=>p.map(x=>x.id===issue.id?{...x,...update}:x))
+    toast.show(ISSUE_STATUS[newStatus]?.label+" ✓")
   }
+
+  const resolveIssue=async(issue,note)=>updateStatus(issue,"resolved",note)
 
   const submitAnn=async()=>{
     if(!annForm.title.trim())return
@@ -1905,7 +1916,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
           {openIssues.length===0?(
             <Box style={{textAlign:"center",padding:48,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700}}>No open issues!</div></Box>
           ):openIssues.sort((a,b)=>{const p={urgent:0,normal:1,low:2};return(p[a.priority]||1)-(p[b.priority]||1)}).map(issue=>(
-            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={true} onResolve={resolveIssue}/>
+            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={true} onResolve={resolveIssue} onUpdateStatus={updateStatus}/>
           ))}
         </div>
       )}
@@ -2060,45 +2071,70 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   )
 }
 
-function KitchenIssueCard({issue,schools,canManage,onResolve}){
+function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus}){
   const [showResolve,setShowResolve]=useState(false)
   const [note,setNote]=useState("")
   const kit=KIT[issue.type]||KIT.other
   const sch=schools.find(s=>s.id===issue.school_id)
   const pri={urgent:{bg:"#FEF2F2",tx:"#DC2626",bd:"#FECACA",label:"🔴 Urgent"},normal:{bg:"#EFF6FF",tx:"#2563EB",bd:"#BFDBFE",label:"Normal"},low:{bg:"#F0FDF4",tx:"#16A34A",bd:"#BBF7D0",label:"Low"}}[issue.priority]||{bg:"#EFF6FF",tx:"#2563EB",bd:"#BFDBFE",label:"Normal"}
+  const status=ISSUE_STATUS[issue.status||"open"]||ISSUE_STATUS.open
+  const nextSteps={
+    open:[{s:"acknowledged",label:"👀 Acknowledge",color:"#D97706",bg:"#FFFBEB",bd:"#FDE68A"}],
+    acknowledged:[{s:"in_progress",label:"🔧 Mark In Progress",color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"}],
+    in_progress:[{s:"resolved",label:"✅ Mark Resolved",color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0",needsNote:true}],
+    resolved:[]
+  }
+
   return(
-    <Box style={{padding:16,borderLeft:"4px solid "+(issue.resolved?"#16A34A":kit.color)}}>
-      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
+    <Box style={{padding:16,borderLeft:"4px solid "+status.color}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:10}}>
         <div style={{flex:1}}>
-          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:6}}>
-            <span style={{fontSize:18}}>{kit.icon}</span>
+          <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:8}}>
+            <span style={{fontSize:20}}>{kit.icon}</span>
             <Pill bg={kit.bg} tx={kit.color}>{kit.label}</Pill>
             <Pill bg={pri.bg} tx={pri.tx} bd={pri.bd}>{pri.label}</Pill>
-            {issue.resolved&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">✅ Resolved</Pill>}
+            <Pill bg={status.bg} tx={status.color} bd={status.bd}>{status.icon} {status.label}</Pill>
           </div>
           <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>{issue.title}</div>
-          {issue.description&&<div style={{fontSize:12,color:C.textMuted,lineHeight:1.6,marginBottom:6}}>{issue.description}</div>}
-          {issue.resolved&&issue.resolution_note&&<div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"6px 10px",fontSize:12,color:"#15803D",marginBottom:6}}>Resolution: {issue.resolution_note}</div>}
+          {issue.description&&<div style={{fontSize:12,color:C.textMuted,lineHeight:1.6,marginBottom:8}}>{issue.description}</div>}
+
+          {/* Status trail */}
+          <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}>
+            {issue.acknowledged_by_name&&<div style={{fontSize:11,color:"#D97706",display:"flex",alignItems:"center",gap:4}}><span>👀</span> Acknowledged by <strong>{issue.acknowledged_by_name}</strong>{issue.acknowledged_at&&" · "+ft(issue.acknowledged_at)}</div>}
+            {issue.in_progress_by_name&&<div style={{fontSize:11,color:"#2563EB",display:"flex",alignItems:"center",gap:4}}><span>🔧</span> In progress by <strong>{issue.in_progress_by_name}</strong></div>}
+            {issue.resolved_by_name&&<div style={{fontSize:11,color:"#16A34A",display:"flex",alignItems:"center",gap:4}}><span>✅</span> Resolved by <strong>{issue.resolved_by_name}</strong>{issue.resolved_at&&" · "+ft(issue.resolved_at)}</div>}
+            {issue.resolution_note&&<div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"6px 10px",fontSize:12,color:"#15803D"}}>"{issue.resolution_note}"</div>}
+          </div>
+
           <div style={{fontSize:11,color:C.textLight,display:"flex",gap:10,flexWrap:"wrap"}}>
             <span>📍 {sch?.name||"--"}</span>
-            <span>By {issue.created_by_name||"--"}</span>
+            <span>Submitted by {issue.created_by_name||"--"}</span>
             <span>{ft(issue.created_at)}</span>
           </div>
         </div>
-        {canManage&&!issue.resolved&&(
-          <button onClick={()=>setShowResolve(v=>!v)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"5px 10px",cursor:"pointer",color:"#15803D",fontSize:12,fontWeight:700,fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",gap:4}}><CheckSquare size={12}/> Resolve</button>
-        )}
       </div>
-      {showResolve&&(
-        <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:14,marginTop:4}}>
-          <L>Resolution Note (optional)</L>
-          <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="How was this resolved?" style={{...inp,resize:"vertical",marginBottom:10}}/>
-          <div style={{display:"flex",gap:8}}>
-            <Btn onClick={()=>setShowResolve(false)} variant="outline" sm>Cancel</Btn>
-            <Btn onClick={()=>{onResolve(issue,note);setShowResolve(false)}} variant="success" sm>Mark Resolved</Btn>
+
+      {/* Action buttons for managers */}
+      {canManage&&(nextSteps[issue.status||"open"]||[]).map(action=>(
+        action.needsNote?(
+          <div key={action.s}>
+            {!showResolve?(
+              <button onClick={()=>setShowResolve(true)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:R.md,border:"1px solid "+action.bd,background:action.bg,color:action.color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{action.label}</button>
+            ):(
+              <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:14,marginTop:8}}>
+                <L>Resolution Note (optional)</L>
+                <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="Describe how this was resolved..." style={{...inp,resize:"vertical",marginBottom:10}}/>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn onClick={()=>setShowResolve(false)} variant="outline" sm>Cancel</Btn>
+                  <Btn onClick={()=>{onUpdateStatus(issue,"resolved",note);setShowResolve(false)}} variant="success" sm>✅ Mark Resolved</Btn>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        ):(
+          <button key={action.s} onClick={()=>onUpdateStatus(issue,action.s)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:R.md,border:"1px solid "+action.bd,background:action.bg,color:action.color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>{action.label}</button>
+        )
+      ))}
     </Box>
   )
 }
@@ -2139,159 +2175,161 @@ function KitchenMessageCard({msg,user,onReply,onAck}){
 function InboxPage({user,schools,supaUsers,toast}){
   const [messages,setMessages]=useState([])
   const [loading,setLoading]=useState(true)
-  const [msgModal,setMsgModal]=useState(false)
-  const [msgForm,setMsgForm]=useState({to_school_id:"",to_user_id:"",body:""})
-  const [replyModal,setReplyModal]=useState(null)
-  const [replyText,setReplyText]=useState("")
-  const canSend=["admin","director","supervisor","chef"].includes(user.role)
+  const [newMsgModal,setNewMsgModal]=useState(false)
+  const [newMsgForm,setNewMsgForm]=useState({to_school_id:"",body:""})
+  const [replyText,setReplyText]=useState({})
+  const [showReply,setShowReply]=useState({})
   const isKM=user.role==="kitchen_manager"
+  const canSend=["admin","director","supervisor","chef"].includes(user.role)
   const mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
 
-  useEffect(()=>{
-    supabase.from("kitchen_messages").select("*").order("created_at",{ascending:false}).then(({data})=>{
-      if(data)setMessages(data)
-      setLoading(false)
-    })
-  },[])
+  useEffect(()=>{loadMessages()},[])
 
-  const sendMessage=async(toSchoolId,toUserId,body,replyToId=null)=>{
-    if(!body.trim())return
-    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,from_role:user.role,to_school_id:toSchoolId||null,to_user_id:toUserId||null,body:body.trim(),created_at:new Date().toISOString(),read:false,acknowledged:false,reply_to:replyToId||null}
-    const{error}=await supabase.from("kitchen_messages").insert(nm)
-    if(error){toast.show("Failed to send: "+error.message,"error");return}
-    setMessages(p=>[nm,...p])
+  const loadMessages=async()=>{
+    const{data}=await supabase.from("kitchen_messages").select("*").order("created_at",{ascending:true})
+    if(data)setMessages(data)
+    setLoading(false)
+  }
+
+  // Group into threads: root messages + their replies
+  const threads=messages
+    .filter(m=>!m.reply_to) // root messages only
+    .map(root=>({
+      root,
+      replies:messages.filter(m=>m.reply_to===root.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))
+    }))
+    .filter(t=>{
+      if(isKM){
+        // KM sees threads where their school is involved
+        return !t.root.to_school_id||mySchoolIds.includes(t.root.to_school_id)||
+               t.root.from_user_id===user.id||
+               t.replies.some(r=>r.from_user_id===user.id)
+      }
+      return true
+    })
+    .sort((a,b)=>new Date(b.root.created_at)-new Date(a.root.created_at))
+
+  const sendNew=async()=>{
+    if(!newMsgForm.body.trim())return
+    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,from_role:user.role,to_school_id:newMsgForm.to_school_id||null,to_user_id:null,body:newMsgForm.body.trim(),created_at:new Date().toISOString(),read:false,acknowledged:false,reply_to:null}
+    await supabase.from("kitchen_messages").insert(nm)
+    setMessages(p=>[...p,nm])
+    setNewMsgForm({to_school_id:"",body:""})
+    setNewMsgModal(false)
     toast.show("Message sent!")
   }
 
-  const acknowledge=async(msg)=>{
-    await supabase.from("kitchen_messages").update({acknowledged:true,read:true}).eq("id",msg.id)
-    setMessages(p=>p.map(x=>x.id===msg.id?{...x,acknowledged:true,read:true}:x))
+  const sendReply=async(rootId,rootSchoolId)=>{
+    const body=(replyText[rootId]||"").trim()
+    if(!body)return
+    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,from_role:user.role,to_school_id:rootSchoolId||null,to_user_id:null,body,created_at:new Date().toISOString(),read:false,acknowledged:false,reply_to:rootId}
+    await supabase.from("kitchen_messages").insert(nm)
+    setMessages(p=>[...p,nm])
+    setReplyText(p=>({...p,[rootId]:""}))
+    setShowReply(p=>({...p,[rootId]:false}))
+    toast.show("Reply sent!")
+  }
+
+  const acknowledge=async(msgId)=>{
+    await supabase.from("kitchen_messages").update({acknowledged:true,read:true}).eq("id",msgId)
+    setMessages(p=>p.map(x=>x.id===msgId?{...x,acknowledged:true,read:true}:x))
     toast.show("Acknowledged!")
   }
 
-  // Filter messages relevant to current user
-  const myMessages=isKM
-    ?messages.filter(m=>!m.to_school_id||mySchoolIds.includes(m.to_school_id)||m.from_user_id===user.id)
-    :messages // staff see all
+  const unread=messages.filter(m=>!m.read&&m.from_user_id!==user.id&&(isKM?(!m.to_school_id||mySchoolIds.includes(m.to_school_id)):true)).length
 
-  const unread=myMessages.filter(m=>!m.read&&m.from_user_id!==user.id).length
-
-  const getSchoolName=id=>schools.find(s=>s.id===id)?.name||"All Kitchens"
+  const MsgBubble=({msg,isReply=false})=>{
+    const isOwn=msg.from_user_id===user.id
+    const roleColors={admin:"#4527A0",director:"#283593",supervisor:"#01579B",chef:"#E65100",kitchen_manager:"#15803D"}
+    const roleColor=roleColors[msg.from_role]||C.textMuted
+    return(
+      <div style={{display:"flex",flexDirection:"column",alignItems:isOwn?"flex-end":"flex-start",marginBottom:10,paddingLeft:isReply?16:0}}>
+        <div style={{fontSize:10,fontWeight:700,color:roleColor,marginBottom:3,paddingLeft:2,paddingRight:2}}>{isOwn?"You":msg.from_name} {msg.from_role&&"· "+msg.from_role}</div>
+        <div style={{maxWidth:"80%",background:isOwn?"#2563EB":"#F1F5F9",color:isOwn?"#fff":C.text,borderRadius:isOwn?"14px 14px 4px 14px":"14px 14px 14px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.6,wordBreak:"break-word"}}>
+          {msg.body}
+        </div>
+        <div style={{fontSize:10,color:C.textLight,marginTop:3,display:"flex",alignItems:"center",gap:6}}>
+          {ft(msg.created_at)}
+          {msg.acknowledged&&<span style={{color:"#15803D",fontWeight:700}}>✓ Acknowledged</span>}
+        </div>
+      </div>
+    )
+  }
 
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader
         title="Kitchen Messages"
-        subtitle={unread>0?unread+" unread":(myMessages.length+" message"+(myMessages.length!==1?"s":""))}
-        action={canSend&&<Btn onClick={()=>setMsgModal(true)}><Plus size={14}/> New Message</Btn>}
+        subtitle={unread>0?unread+" unread message"+(unread!==1?"s":""):"All conversations"}
+        action={canSend&&<Btn onClick={()=>setNewMsgModal(true)}><Plus size={14}/> New Message</Btn>}
       />
 
-      {/* SEND MESSAGE MODAL */}
-      {msgModal&&(
+      {newMsgModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
           <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
-              <span style={{fontWeight:800,fontSize:15,color:C.text}}>New Message to Kitchen</span>
-              <button onClick={()=>setMsgModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>New Message</span>
+              <button onClick={()=>setNewMsgModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
             </div>
             <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
-              <div><L>Send To</L><SG schools={schools} value={msgForm.to_school_id} onChange={e=>setMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
-              <div><L>Message *</L><textarea value={msgForm.body} onChange={e=>setMsgForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Type your message to the kitchen..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
-              <div style={{display:"flex",gap:10}}>
-                <Btn onClick={()=>setMsgModal(false)} variant="outline">Cancel</Btn>
-                <Btn onClick={async()=>{await sendMessage(msgForm.to_school_id,"",msgForm.body,null);setMsgForm({to_school_id:"",body:""});setMsgModal(false)}} disabled={!msgForm.body.trim()}>Send</Btn>
-              </div>
+              <div><L>Send To</L><SG schools={schools} value={newMsgForm.to_school_id} onChange={e=>setNewMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
+              <div><L>Message *</L><textarea value={newMsgForm.body} onChange={e=>setNewMsgForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Type your message..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+              <div style={{display:"flex",gap:10}}><Btn onClick={()=>setNewMsgModal(false)} variant="outline">Cancel</Btn><Btn onClick={sendNew} disabled={!newMsgForm.body.trim()}>Send</Btn></div>
             </div>
           </div>
         </div>
       )}
 
-      {/* REPLY MODAL */}
-      {replyModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
-          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
-              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Reply to {replyModal.from_name}</span>
-              <button onClick={()=>{setReplyModal(null);setReplyText("")}} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
-            </div>
-            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
-              <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,padding:"10px 14px",fontSize:13,color:C.textMuted,lineHeight:1.6,fontStyle:"italic"}}>"{replyModal.body.slice(0,120)}{replyModal.body.length>120?"...":""}"</div>
-              <div><L>Your Reply *</L><textarea value={replyText} onChange={e=>setReplyText(e.target.value)} rows={4} placeholder="Type your reply..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
-              <div style={{display:"flex",gap:10}}>
-                <Btn onClick={()=>{setReplyModal(null);setReplyText("")}} variant="outline">Cancel</Btn>
-                <Btn onClick={async()=>{
-                  await sendMessage(replyModal.to_school_id,replyModal.from_user_id,replyText,replyModal.id)
-                  setReplyModal(null);setReplyText("")
-                }} disabled={!replyText.trim()}>Send Reply</Btn>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {loading?(
-        <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>Loading...</Box>
-      ):myMessages.length===0?(
-        <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>
-          <div style={{fontSize:32,marginBottom:8}}>📬</div>
-          <div style={{fontWeight:700}}>No messages yet.</div>
-          {canSend&&<div style={{marginTop:12}}><Btn onClick={()=>setMsgModal(true)} sm><Plus size={13}/> Send First Message</Btn></div>}
-        </Box>
-      ):(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {myMessages.map(msg=>{
-            const isOwn=msg.from_user_id===user.id
-            const isReply=!!msg.reply_to
-            const originalMsg=msg.reply_to?myMessages.find(m=>m.id===msg.reply_to):null
-            const canReply=!isOwn
-            const canAck=!isOwn&&isKM&&!msg.acknowledged
-            return(
-              <Box key={msg.id} style={{padding:16,borderLeft:"4px solid "+(isOwn?"#7C3AED":msg.acknowledged?"#16A34A":msg.read?"#E2E8F0":"#2563EB"),background:isOwn?"#FAFAFA":"#fff"}}>
-                {/* Header */}
-                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
-                  <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8}}>
-                    {isOwn?(
-                      <span style={{fontWeight:700,fontSize:13,color:"#7C3AED"}}>You → {msg.to_school_id?getSchoolName(msg.to_school_id):"All Kitchens"}</span>
-                    ):(
-                      <span style={{fontWeight:700,fontSize:13,color:C.text}}>{msg.from_name||"Staff"}</span>
-                    )}
-                    {isReply&&<span style={{fontSize:10,background:"#F5F3FF",color:"#7C3AED",padding:"1px 6px",borderRadius:R.full,fontWeight:700}}>↩ Reply</span>}
-                    {!isOwn&&!msg.read&&<span style={{fontSize:10,background:"#2563EB",color:"#fff",padding:"1px 6px",borderRadius:R.full,fontWeight:700}}>NEW</span>}
-                    {msg.acknowledged&&<span style={{fontSize:10,background:"#F0FDF4",color:"#15803D",padding:"1px 6px",borderRadius:R.full,fontWeight:700}}>✓ Acknowledged</span>}
-                  </div>
-                  <span style={{fontSize:11,color:C.textLight,flexShrink:0}}>{ft(msg.created_at)}</span>
+      {loading?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>Loading...</Box>
+      :threads.length===0?<Box style={{textAlign:"center",padding:48,color:C.textMuted}}><div style={{fontSize:36,marginBottom:10}}>💬</div><div style={{fontWeight:700,fontSize:15}}>No messages yet</div>{canSend&&<div style={{marginTop:14}}><Btn onClick={()=>setNewMsgModal(true)} sm><Plus size={13}/> Start a Conversation</Btn></div>}</Box>
+      :<div style={{display:"flex",flexDirection:"column",gap:16}}>
+        {threads.map(({root,replies})=>{
+          const sch=schools.find(s=>s.id===root.to_school_id)
+          const allMsgs=[root,...replies]
+          const hasUnread=allMsgs.some(m=>!m.read&&m.from_user_id!==user.id)
+          const anyAcked=allMsgs.some(m=>m.acknowledged)
+          const kmReply=replies.find(r=>r.from_role==="kitchen_manager")
+          const canAckThis=isKM&&!root.acknowledged&&root.from_user_id!==user.id
+          return(
+            <Box key={root.id} style={{padding:0,overflow:"hidden",border:"1px solid "+(hasUnread?"#BFDBFE":"#E2E8F0")}}>
+              {/* Thread header */}
+              <div style={{padding:"10px 16px",background:hasUnread?"#EFF6FF":"#F8FAFC",borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:700,fontSize:13,color:C.text}}>📍 {sch?.name||"All Kitchens"}</span>
+                  {hasUnread&&<span style={{background:"#2563EB",color:"#fff",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:R.full}}>NEW</span>}
+                  {anyAcked&&<span style={{background:"#F0FDF4",color:"#15803D",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:R.full}}>✓ Acknowledged</span>}
+                  {kmReply&&!isKM&&<span style={{background:"#FFF3E0",color:"#E65100",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:R.full}}>Kitchen replied</span>}
+                  <span style={{fontSize:10,color:C.textLight}}>{replies.length} repl{replies.length===1?"y":"ies"}</span>
                 </div>
-
-                {/* Quoted reply */}
-                {isReply&&originalMsg&&(
-                  <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,padding:"6px 10px",fontSize:11,color:C.textMuted,marginBottom:8,fontStyle:"italic"}}>
-                    Re: "{originalMsg.body.slice(0,80)}{originalMsg.body.length>80?"...":""}"
-                  </div>
+                <span style={{fontSize:11,color:C.textLight}}>{fd(root.created_at?.slice(0,10)||TODAY)}</span>
+              </div>
+              {/* Messages */}
+              <div style={{padding:"14px 16px"}}>
+                {allMsgs.map((m,i)=><MsgBubble key={m.id} msg={m} isReply={i>0}/>)}
+              </div>
+              {/* Actions */}
+              <div style={{padding:"8px 16px",borderTop:"1px solid #F1F5F9",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                {canAckThis&&(
+                  <button onClick={()=>acknowledge(root.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BBF7D0",background:"#F0FDF4",color:"#15803D",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    <Check size={11}/>Acknowledge
+                  </button>
                 )}
-
-                {/* Message body */}
-                <div style={{fontSize:13,color:C.text,lineHeight:1.7,marginBottom:10,whiteSpace:"pre-wrap"}}>{msg.body}</div>
-
-                {/* Actions */}
-                {(canReply||canAck)&&(
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    {canAck&&(
-                      <button onClick={()=>acknowledge(msg)} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 12px",borderRadius:R.md,border:"1px solid #BBF7D0",background:"#F0FDF4",color:"#15803D",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        <Check size={11}/>Acknowledge
-                      </button>
-                    )}
-                    {canReply&&(
-                      <button onClick={()=>setReplyModal(msg)} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 12px",borderRadius:R.md,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ↩ Reply
-                      </button>
-                    )}
+                <button onClick={()=>setShowReply(p=>({...p,[root.id]:!p[root.id]}))} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ↩ Reply
+                </button>
+              </div>
+              {showReply[root.id]&&(
+                <div style={{padding:"0 16px 14px"}}>
+                  <div style={{display:"flex",gap:8}}>
+                    <textarea value={replyText[root.id]||""} onChange={e=>setReplyText(p=>({...p,[root.id]:e.target.value}))} rows={2} placeholder="Type your reply..." style={{...inp,flex:1,resize:"none"}}/>
+                    <button onClick={()=>sendReply(root.id,root.to_school_id)} disabled={!(replyText[root.id]||"").trim()} style={{padding:"0 16px",borderRadius:R.md,background:"#2563EB",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Send</button>
                   </div>
-                )}
-              </Box>
-            )
-          })}
-        </div>
-      )}
+                </div>
+              )}
+            </Box>
+          )
+        })}
+      </div>}
     </div>
   )
 }
