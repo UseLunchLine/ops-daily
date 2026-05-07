@@ -800,6 +800,8 @@ function ReportPage({recaps,schools,users,noHeader=false}){
     win.document.write(`<!DOCTYPE html><html><head><title>Monthly Report - ${monthName}</title><style>body{font-family:system-ui,sans-serif;padding:32px;max-width:800px;margin:0 auto;color:#1E293B;}h1{font-size:22px;font-weight:900;margin-bottom:4px;}h2{font-size:14px;font-weight:500;color:#64748B;margin-bottom:24px;}@media print{body{padding:16px;}}</style></head><body><h1>Monthly Report — ${monthName}</h1><h2>South Bend Community School Corporation · Food Service Operations</h2>${rows}<script>window.onload=()=>window.print()<\/script></body></html>`)
     win.document.close()
   }
+
+  const getAISummary=async()=>{
     if(!rep||rep.length===0)return
     setAiLoading(true)
     const lines=rep.map(({s,total,counts,resolved})=>s.name+": "+total+" recaps -- "+(counts.green||0)+" All Good, "+(counts.yellow||0)+" Minor Issues, "+(counts.red||0)+" Major Problems, "+resolved+" resolved.")
