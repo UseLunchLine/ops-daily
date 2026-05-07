@@ -245,14 +245,14 @@ export default function App(){
   const uById=id=>users.find(u=>u.id===id)||supaUsers.find(u=>u.id===id)||{name:"--"}
 
   const navItems=isKM?[
-    {id:"kitchen",label:"My Kitchen",short:"Kitchen",I:ClipboardList},
+    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
   ]:[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
     {id:"submit",label:"Submit Recap",short:"Submit",I:PlusCircle},
     {id:"schools",label:"Schools",short:"Schools",I:Building2},
     ...(perms.calloffs?[{id:"calloffs",label:"Call-Off Tracking",short:"Call-Offs",I:ClipboardList}]:[]),
-    {id:"kitchen",label:"Kitchen",short:"Kitchen",I:CheckSquare},
+    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:CheckSquare},
     {id:"events",label:"Calendar",short:"Calendar",I:CalendarDays},
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
@@ -264,15 +264,14 @@ export default function App(){
   const PageEl=()=>{
     if(page==="dashboard")return <DashPage {...props}/>
     if(page==="submit") return <SubmitPage {...props}/>
-    if(page==="school") return <SchoolPage {...props}/>
-    if(page==="report") return <ReportPage {...props}/>
+    if(page==="schools"||page==="school") return <SchoolsPage {...props}/>
     if(page==="calloffs") return <CalloffsPage {...props}/>
     if(page==="directory")return <DirPage {...props}/>
     if(page==="map")return <MapPage {...props}/>
     if(page==="events")return <EventsPage {...props}/>
     if(page==="kitchen")return <KitchenPage {...props}/>
     if(page==="admin") return <AdminPage {...props}/>
-    return null
+    return <DashPage {...props}/>
   }
 
   if(mobile){
@@ -410,6 +409,10 @@ function Login(){
 }
 
 function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
+  const [announcements,setAnnouncements]=useState([])
+  useEffect(()=>{
+    supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(3).then(({data})=>{if(data)setAnnouncements(data)})
+  },[])
   const [dateFrom,setDateFrom]=useState(TODAY)
   const [dateTo,setDateTo]=useState(TODAY)
   const [fSchool,setFSchool]=useState("")
@@ -454,6 +457,23 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn>}/>
+      {announcements.length>0&&(
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
+          {announcements.map(ann=>{
+            const at=({general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}})[ann.type]||{color:"#2563EB",bg:"#EFF6FF"}
+            return(
+              <div key={ann.id} style={{background:at.bg,border:"1px solid "+at.color+"33",borderLeft:"4px solid "+at.color,borderRadius:R.lg,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:20,flexShrink:0}}>📢</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:800,fontSize:13,color:at.color,marginBottom:2}}>{ann.title}</div>
+                  {ann.body&&<div style={{fontSize:12,color:at.color,opacity:.8,lineHeight:1.5}}>{ann.body}</div>}
+                </div>
+                <span style={{fontSize:11,color:at.color,opacity:.6,flexShrink:0,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
         {[{label:"Total Recaps",val:totalShown,color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},{label:"All Good",val:goodShown,color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{label:"Need Attention",val:issueShown,color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"}].map(c=>(
@@ -659,7 +679,7 @@ function SubmitPage({user,schools,setRecaps,toast}){
   )
 }
 
-function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin}){
+function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin,noHeader=false}){
   const [sid,setSid]=useState(ctx?.school?.id||"")
   const [on,setOn]=useState(new Set())
   const [resolveId,setResolveId]=useState(null)
@@ -681,7 +701,7 @@ function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin}){
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="School Detail" subtitle="View recap history for a school"/>
+      {!noHeader&&<PageHeader title="School Detail" subtitle="View recap history for a school"/>}
       <Box style={{marginBottom:14,maxWidth:300}}><L>Select School</L><SG schools={schools} value={sid} onChange={e=>setSid(e.target.value)}/></Box>
       {sch&&<>
         <div style={{marginBottom:14}}>
@@ -727,7 +747,7 @@ function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin}){
   )
 }
 
-function ReportPage({recaps,schools,users}){
+function ReportPage({recaps,schools,users,noHeader=false}){
   const now=new Date()
   const [month,setMonth]=useState(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0"))
   const [sf,setSf]=useState("all")
@@ -759,7 +779,7 @@ function ReportPage({recaps,schools,users}){
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Monthly Report" subtitle="Overview of food service performance"/>
+      {!noHeader&&<PageHeader title="Monthly Report" subtitle="Overview of food service performance"/>}
       <Box style={{marginBottom:20,padding:"14px 18px",display:"flex",flexWrap:"wrap",gap:12,alignItems:"flex-end"}}>
         <div><L>Month</L><input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={{...inp}}/></div>
         <div style={{flex:"1 1 180px",maxWidth:260}}><L>School</L><SG schools={schools} value={sf} onChange={e=>setSf(e.target.value)} all="All Schools"/></div>
@@ -798,7 +818,7 @@ function ReportPage({recaps,schools,users}){
   )
 }
 
-function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
+function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
   const [mobile,setMobile]=useState(window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
   const [tab,setTab]=useState("log")
@@ -807,6 +827,17 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
   const [fS,setFS]=useState("")
   const [fT,setFT]=useState("")
   const sById=id=>schools.find(s=>s.id===id)
+
+  // Get staff for selected school from directory
+  const schoolStaff=form.school_id
+    ?directory.filter(d=>d.is_active!==false&&(d.school_ids||[]).includes(form.school_id))
+    :directory.filter(d=>d.is_active!==false)
+
+  const handleStaffSelect=(e)=>{
+    const name=e.target.value
+    const staffMember=directory.find(d=>d.name===name)
+    setForm(f=>({...f,staff_name:name,staff_role:staffMember?.position||f.staff_role}))
+  }
 
   const sub=async()=>{
     if(!form.school_id){setErr("Select a school.");return}
@@ -830,8 +861,25 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast}){
         <Box style={{display:"flex",flexDirection:"column",gap:14}}>
           <div><L>Date</L><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={{...inp,width:"100%",maxWidth:180}}/></div>
           <div><L>School *</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></div>
-          <div><L>Staff Name *</L><Inp value={form.staff_name} onChange={e=>setForm(f=>({...f,staff_name:e.target.value}))} placeholder="Full name"/></div>
-          <div><L>Position</L><Inp value={form.staff_role} onChange={e=>setForm(f=>({...f,staff_role:e.target.value}))} placeholder="e.g. Cook, Manager"/></div>
+          <div>
+            <L>Staff Name *</L>
+            <select value={form.staff_name} onChange={handleStaffSelect} style={{...inp,background:"#fff"}}>
+              <option value="">-- Select Staff Member --</option>
+              {schoolStaff.length>0?(
+                schoolStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}</option>)
+              ):(
+                directory.filter(d=>d.is_active!==false).map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}</option>)
+              )}
+              <option value="__manual__">+ Enter name manually</option>
+            </select>
+            {form.staff_name==="__manual__"&&(
+              <Inp style={{marginTop:6}} value={""} onChange={e=>setForm(f=>({...f,staff_name:e.target.value}))} placeholder="Type full name..."/>
+            )}
+          </div>
+          <div>
+            <L>Position</L>
+            <Inp value={form.staff_role} onChange={e=>setForm(f=>({...f,staff_role:e.target.value}))} placeholder="Auto-filled from directory"/>
+          </div>
           <div><L>Type *</L>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
               {[{id:"calloff",l:"Call-Off"},{id:"sick",l:"Sick Day"},{id:"ncns",l:"No Call No Show"},{id:"tardy",l:"Tardy"}].map(t=>{
@@ -2149,19 +2197,14 @@ function KitchenMessageCard({msg,user,onReply,onAck}){
 
 // Combined Schools page - School Detail + Monthly Report in sub-tabs
 function SchoolsPage({ctx,schools,recaps,setRecaps,users,supaUsers,toast,user,isAdmin}){
-  const [tab,setTab]=useState(ctx?"detail":"detail")
-  const [selSchool,setSelSchool]=useState(ctx||"")
-  const [mobile,setMobile]=useState(window.innerWidth<768)
-  useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
-
-  const props={ctx:selSchool,schools,recaps,setRecaps,users,supaUsers,toast,user,isAdmin}
-
+  const [tab,setTab]=useState("detail")
+  const props={ctx,schools,recaps,setRecaps,users,supaUsers,toast,user,isAdmin}
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Schools" subtitle="School recap history and monthly performance reports"/>
       <TabBar tabs={[{id:"detail",label:"🏫 School Detail"},{id:"report",label:"📊 Monthly Report"}]} active={tab} set={setTab}/>
-      {tab==="detail"&&<SchoolPage {...props}/>}
-      {tab==="report"&&<ReportPage recaps={recaps} schools={schools} users={[...users,...supaUsers]}/>}
+      {tab==="detail"&&<SchoolPage {...props} noHeader={true}/>}
+      {tab==="report"&&<ReportPage recaps={recaps} schools={schools} users={[...users,...supaUsers]} noHeader={true}/>}
     </div>
   )
 }
