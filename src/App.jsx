@@ -805,7 +805,7 @@ function ReportPage({recaps,schools,users,noHeader=false}){
     if(!rep||rep.length===0)return
     setAiLoading(true)
     const lines=rep.map(({s,total,counts,resolved})=>s.name+": "+total+" recaps -- "+(counts.green||0)+" All Good, "+(counts.yellow||0)+" Minor Issues, "+(counts.red||0)+" Major Problems, "+resolved+" resolved.")
-    const result=await callAI([{role:"user",content:"Write a 3-4 sentence executive summary of this school district food service monthly report. Be specific, name standout schools, call out patterns. Professional tone.\n\nData:\n"+lines.join("\n")}])
+    const result=await callAI([{role:"user",content:"Write a 3-4 sentence executive summary using ONLY the real data below for South Bend Community School Corporation food service. Use the EXACT school names given. Do NOT invent data, names, or outcomes not present in this data. Professional tone.\n\nData:\n"+lines.join("\n")+"\n\nOnly summarize what is in this data."}])
     setAiSummary(result||"Could not generate summary.")
     setAiLoading(false)
   }
@@ -819,7 +819,7 @@ function ReportPage({recaps,schools,users,noHeader=false}){
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <Btn onClick={gen} sm>Generate</Btn>
           {rep&&rep.length>0&&<AIBtn onClick={getAISummary} loading={aiLoading}>{aiLoading?"Writing...":"AI Narrative"}</AIBtn>}
-          {rep&&<Btn onClick={printReport} variant="outline" sm><Printer size={12}/> Print Report</Btn>}
+
         </div>
       </Box>
       {aiSummary&&<AISummaryBox text={aiSummary}/>}
@@ -1008,7 +1008,7 @@ function CalloffStats({calloffs,schools,mobile}){
     if(!data)return
     setAiLoading(true)
     const lines=data.bySchool.map(r=>r.s.name+": "+r.total+" total ("+r.calloff+" call-offs, "+r.sick+" sick, "+r.ncns+" NCNS, "+r.tardy+" tardy). Staff: "+r.staff.join(", "))
-    const result=await callAI([{role:"user",content:"Analyze call-off patterns for a school district food service. Write 2-3 sentences identifying concerning patterns. Be direct.\n\n"+lines.join("\n")}])
+    const result=await callAI([{role:"user",content:"You are analyzing REAL call-off data for South Bend Community School Corporation food service. Use ONLY the exact school names and staff names provided below. Do NOT invent names, schools, or scenarios. Write 3-4 sentences identifying the most concerning patterns using only this data:\n\n"+lines.join("\n")+"\n\nOnly reference what is in this data. No made-up examples."}])
     setAiInsight(result||"Could not generate insight.")
     setAiLoading(false)
   }
@@ -1893,11 +1893,13 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const resolvedIssues=myIssues.filter(i=>i.resolved)
   // KM tabs: Report, Announcements, Inbox
   // Others: Issues, Announcements, Send Message
+  const unreadMsgs=0 // loaded inside KitchenMessagesTab
   const kmTabs=[
     {id:"report",label:"📋 Report Issue"},
     {id:"issues",label:"🔴 Issues"+(myIssues.filter(i=>i.status!=="resolved").length>0?" ("+myIssues.filter(i=>i.status!=="resolved").length+")":"")},
     {id:"announcements",label:"📢 Announcements"},
-    {id:"inbox",label:"💬 Messages"},
+    {id:"inbox",label:"💬 New Messages"},
+    {id:"inbox_prev",label:"📂 Previous"},
     {id:"calendar",label:"📅 Calendar"},
   ]
   const staffTabs=[
@@ -1988,12 +1990,12 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       )}
 
       {/* OPEN ISSUES - Staff view */}
-      {tab==="issues"&&canManageAll&&(
+      {tab==="issues"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {openIssues.length===0?(
+          {myIssues.filter(i=>i.status!=="resolved").length===0?(
             <Box style={{textAlign:"center",padding:48,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700}}>No open issues!</div></Box>
-          ):openIssues.sort((a,b)=>{const p={urgent:0,normal:1,low:2};return(p[a.priority]||1)-(p[b.priority]||1)}).map(issue=>(
-            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={true} onResolve={resolveIssue} onUpdateStatus={updateStatus}/>
+          ):myIssues.filter(i=>i.status!=="resolved").sort((a,b)=>{const p={urgent:0,normal:1,low:2};return(p[a.priority]||1)-(p[b.priority]||1)}).map(issue=>(
+            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={canManageAll} onResolve={resolveIssue} onUpdateStatus={updateStatus}/>
           ))}
         </div>
       )}
@@ -2011,30 +2013,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
       {/* ANNOUNCEMENTS - both KM and staff see this */}
       {tab==="announcements"&&(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {canManageAll&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}><Btn onClick={()=>setAnnModal(true)} sm><Plus size={13}/> Post Announcement</Btn></div>}
-          {announcements.length===0?(
-            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📢</div><div style={{fontWeight:700}}>No announcements yet.</div></Box>
-          ):announcements.map(ann=>{
-            const at=ANN_TYPES[ann.type]||ANN_TYPES.general
-            return(
-              <Box key={ann.id} style={{padding:16,borderLeft:"4px solid "+at.color}}>
-                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
-                      <Pill bg={at.bg} tx={at.color}>{at.label}</Pill>
-                      <span style={{fontSize:11,color:C.textLight}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
-                      {ann.created_by_name&&<span style={{fontSize:11,color:C.textLight}}>by {ann.created_by_name}</span>}
-                    </div>
-                    <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:6}}>{ann.title}</div>
-                    {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7}}>{ann.body}</div>}
-                  </div>
-                  {canManageAll&&<button onClick={async()=>{if(!window.confirm("Delete?"))return;await supabase.from("announcements").delete().eq("id",ann.id);setAnnouncements(p=>p.filter(x=>x.id!==ann.id));toast.show("Deleted.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>Del</button>}
-                </div>
-              </Box>
-            )
-          })}
-        </div>
+        <AnnTab announcements={announcements} setAnnouncements={setAnnouncements} canManageAll={canManageAll} isKM={isKM} onPost={()=>setAnnModal(true)} toast={toast}/>
       )}
 
       {/* CALENDAR - KM sees events */}
@@ -2061,8 +2040,8 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       )}
 
       {/* MESSAGES - handles both staff and KM */}
-      {(tab==="messages"||tab==="inbox")&&(
-        <KitchenMessagesTab user={user} schools={schools} supaUsers={supaUsers} toast={toast} isKM={isKM} mySchoolIds={userSchoolIds}/>
+      {(tab==="messages"||tab==="inbox"||tab==="inbox_prev")&&(
+        <KitchenMessagesTab user={user} schools={schools} supaUsers={supaUsers} toast={toast} isKM={isKM} mySchoolIds={userSchoolIds} showPrevious={tab==="inbox_prev"}/>
       )}
 
       {/* ANNOUNCEMENT MODAL */}
@@ -2210,7 +2189,7 @@ function SchoolsPage({ctx,schools,recaps,setRecaps,users,supaUsers,toast,user,is
 }
 
 // Shared messaging component used inside Kitchen Hub for both KM and staff
-function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[]}){
+function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],showPrevious=false}){
   const [messages,setMessages]=useState([])
   const [loading,setLoading]=useState(true)
   const [newMsgModal,setNewMsgModal]=useState(false)
@@ -2226,7 +2205,8 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[]}){
     })
   },[])
 
-  const threads=messages
+  const sevenDaysAgo=new Date(Date.now()-7*24*60*60*1000).toISOString()
+  const allThreads=messages
     .filter(m=>!m.reply_to)
     .map(root=>({root,replies:messages.filter(m=>m.reply_to===root.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))}))
     .filter(t=>{
@@ -2234,6 +2214,10 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[]}){
       return true
     })
     .sort((a,b)=>new Date(b.root.created_at)-new Date(a.root.created_at))
+
+  const threads=showPrevious
+    ?allThreads.filter(t=>t.root.created_at<sevenDaysAgo)
+    :allThreads.filter(t=>t.root.created_at>=sevenDaysAgo)
 
   const sendNew=async()=>{
     if(!newMsgForm.body.trim())return
@@ -2305,7 +2289,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[]}){
       </div>
 
       {loading?<Box style={{textAlign:"center",padding:32,color:C.textMuted}}>Loading...</Box>
-      :threads.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontWeight:700}}>No messages yet</div>{canSend&&<div style={{marginTop:12}}><Btn onClick={()=>setNewMsgModal(true)} sm>Send First Message</Btn></div>}</Box>
+      :threads.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontWeight:700}}>{showPrevious?"No previous messages":"No new messages in the last 7 days"}</div>{canSend&&!showPrevious&&<div style={{marginTop:12}}><Btn onClick={()=>setNewMsgModal(true)} sm>Send First Message</Btn></div>}</Box>
       :<div style={{display:"flex",flexDirection:"column",gap:12}}>
         {threads.map(({root,replies})=>{
           const sch=schools.find(s=>s.id===root.to_school_id)
@@ -2342,6 +2326,66 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[]}){
           )
         })}
       </div>}
+    </div>
+  )
+}
+
+// Expandable school pills for directory
+function SchoolPills({schoolIds,schools}){
+  const [expanded,setExpanded]=useState(false)
+  const shown=expanded?schoolIds:schoolIds.slice(0,2)
+  return(
+    <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center"}}>
+      {shown.map(sid=>{const s=schools.find(x=>x.id===sid);return s?<Pill key={sid} bg="#F1F5F9" tx="#475569" bd="#E2E8F0">{s.name.split(" ")[0]}</Pill>:null})}
+      {!expanded&&schoolIds.length>2&&(
+        <button onClick={e=>{e.stopPropagation();setExpanded(true)}} style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.full,padding:"1px 7px",cursor:"pointer",color:"#2563EB",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>+{schoolIds.length-2} more</button>
+      )}
+      {expanded&&schoolIds.length>2&&(
+        <button onClick={e=>{e.stopPropagation();setExpanded(false)}} style={{background:"#F1F5F9",border:"1px solid #E2E8F0",borderRadius:R.full,padding:"1px 7px",cursor:"pointer",color:C.textMuted,fontSize:11,fontWeight:700,fontFamily:"inherit"}}>less</button>
+      )}
+    </div>
+  )
+}
+
+// Announcements tab with KM dismiss (read) button
+function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast}){
+  const [readIds,setReadIds]=useState(()=>{try{return JSON.parse(localStorage.getItem("readAnns")||"[]")}catch{return[]}})
+  const markRead=(id)=>{
+    const updated=[...readIds,id]
+    setReadIds(updated)
+    try{localStorage.setItem("readAnns",JSON.stringify(updated))}catch{}
+  }
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {canManageAll&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}><Btn onClick={onPost} sm><Plus size={13}/> Post Announcement</Btn></div>}
+      {announcements.length===0?(
+        <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📢</div><div style={{fontWeight:700}}>No announcements yet.</div></Box>
+      ):announcements.map(ann=>{
+        const at=ANN_TYPES[ann.type]||ANN_TYPES.general
+        const isRead=readIds.includes(ann.id)
+        return(
+          <Box key={ann.id} style={{padding:16,borderLeft:"4px solid "+at.color,opacity:isRead?.7:1}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                  <Pill bg={at.bg} tx={at.color}>{at.label}</Pill>
+                  {isRead&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">✓ Read</Pill>}
+                  <span style={{fontSize:11,color:C.textLight}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
+                  {ann.created_by_name&&<span style={{fontSize:11,color:C.textLight}}>by {ann.created_by_name}</span>}
+                </div>
+                <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:6}}>{ann.title}</div>
+                {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7}}>{ann.body}</div>}
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                {isKM&&!isRead&&(
+                  <button onClick={()=>markRead(ann.id)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#15803D",fontSize:11,fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}><Check size={10}/>Mark Read</button>
+                )}
+                {canManageAll&&<button onClick={async()=>{if(!window.confirm("Delete?"))return;await supabase.from("announcements").delete().eq("id",ann.id);setAnnouncements(p=>p.filter(x=>x.id!==ann.id));toast.show("Deleted.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>Del</button>}
+              </div>
+            </div>
+          </Box>
+        )
+      })}
     </div>
   )
 }
