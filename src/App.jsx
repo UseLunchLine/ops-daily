@@ -476,9 +476,18 @@ function Login(){
   )
 }
 
+function AlertsBtn(){
+  const granted=typeof Notification!=="undefined"&&Notification.permission==="granted"
+  return(
+    <button onClick={()=>requestPushPermission()} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:R.md,border:"1px solid "+(granted?"#16A34A":"#E2E8F0"),background:granted?"#F0FDF4":"#fff",color:granted?"#15803D":C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>
+      {granted?"🔔 Alerts On":"🔔 Enable Alerts"}
+    </button>
+  )
+}
+
 function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
   const [announcements,setAnnouncements]=useState([])
-  const [dismissedAnns,setDismissedAnns]=useState([])
+  const [dismissedAnns,setDismissedAnns]=useState(()=>{try{return JSON.parse(localStorage.getItem("dismissedAnns")||"[]")}catch{return[]}})
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(5).then(({data})=>{if(data)setAnnouncements(data)})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
@@ -488,10 +497,15 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
     }).subscribe()
     return()=>rt.unsubscribe()
   },[])
-  const [dateFrom,setDateFrom]=useState(TODAY)
-  const [dateTo,setDateTo]=useState(TODAY)
-  const [fSchool,setFSchool]=useState("")
-  const [fStatus,setFStatus]=useState("")
+  const [dateFrom,setDateFrom]=useState(()=>sessionStorage.getItem('dash_from')||TODAY)
+  const [dateTo,setDateTo]=useState(()=>sessionStorage.getItem('dash_to')||TODAY)
+  const [fSchool,setFSchool]=useState(()=>sessionStorage.getItem('dash_school')||"")
+  const [fStatus,setFStatus]=useState(()=>sessionStorage.getItem('dash_status')||"")
+
+  const setFrom=(v)=>{setDateFrom(v);sessionStorage.setItem('dash_from',v)}
+  const setTo=(v)=>{setDateTo(v);sessionStorage.setItem('dash_to',v)}
+  const setSchool=(v)=>{setFSchool(v);sessionStorage.setItem('dash_school',v)}
+  const setStatus=(v)=>{setFStatus(v);sessionStorage.setItem('dash_status',v)}
   const [on,setOn]=useState(new Set())
   const [mobile,setMobile]=useState(window.innerWidth<768)
   const [resolveId,setResolveId]=useState(null)
@@ -526,12 +540,12 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
     toast.show("Recap deleted.")
   }
 
-  const reset=()=>{setDateFrom(TODAY);setDateTo(TODAY);setFSchool("");setFStatus("")}
+  const reset=()=>{setFrom(TODAY);setTo(TODAY);setSchool("");setStatus("")}
   const isMultiDay=dateFrom!==dateTo
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><Btn onClick={()=>requestPushPermission()} variant="outline" sm style={{background:typeof Notification!=="undefined"&&Notification.permission==="granted"?"#F0FDF4":"#fff",borderColor:typeof Notification!=="undefined"&&Notification.permission==="granted"?"#16A34A":"#E2E8F0",color:typeof Notification!=="undefined"&&Notification.permission==="granted"?"#15803D":C.textMuted}}>{typeof Notification!=="undefined"&&Notification.permission==="granted"?"🔔 Alerts On":"🔔 Enable Alerts"}</Btn><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
+      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><AlertsBtn/><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
       {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).length>0&&(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
           {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).map(ann=>{
@@ -548,7 +562,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
                 <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                   {ann.expires_at&&<span style={{fontSize:10,color:at.color,opacity:.5}}>Expires {fd(ann.expires_at.slice(0,10))}</span>}
                   <span style={{fontSize:11,color:at.color,opacity:.6,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
-                  <button onClick={()=>setDismissedAnns(p=>[...p,ann.id])} style={{background:"transparent",border:"none",cursor:"pointer",color:at.color,opacity:.5,display:"flex",padding:2,fontSize:16,lineHeight:1}}>✕</button>
+                  <button onClick={()=>{const u=[...dismissedAnns,ann.id];setDismissedAnns(u);try{localStorage.setItem("dismissedAnns",JSON.stringify(u))}catch{}}} style={{background:"transparent",border:"none",cursor:"pointer",color:at.color,opacity:.5,display:"flex",padding:2,fontSize:16,lineHeight:1}}>✕</button>
                 </div>
               </div>
             )
@@ -569,20 +583,20 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
         <div style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"flex-end"}}>
           <div>
             <L>From Date</L>
-            <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);if(e.target.value>dateTo)setDateTo(e.target.value)}} style={{...inp,width:"100%",maxWidth:180}}/>
+            <input type="date" value={dateFrom} onChange={e=>{setFrom(e.target.value);if(e.target.value>dateTo)setTo(e.target.value)}} style={{...inp,width:"100%",maxWidth:180}}/>
           </div>
           <div>
             <L>To Date</L>
-            <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);if(e.target.value<dateFrom)setDateFrom(e.target.value)}} style={{...inp,width:"100%",maxWidth:180}}/>
+            <input type="date" value={dateTo} onChange={e=>{setTo(e.target.value);if(e.target.value<dateFrom)setFrom(e.target.value)}} style={{...inp,width:"100%",maxWidth:180}}/>
           </div>
           <div style={{flex:"1 1 160px",maxWidth:260}}>
             <L>School</L>
-            <SG schools={schools} value={fSchool} onChange={e=>setFSchool(e.target.value)} all="All Schools"/>
+            <SG schools={schools} value={fSchool} onChange={e=>setSchool(e.target.value)} all="All Schools"/>
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingBottom:2}}>
-            <button onClick={()=>{setDateFrom(TODAY);setDateTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Today</button>
-            <button onClick={()=>{const d=new Date();d.setDate(d.getDate()-6);setDateFrom(d.toISOString().slice(0,10));setDateTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Last 7 Days</button>
-            <button onClick={()=>{const d=new Date();d.setDate(1);setDateFrom(d.toISOString().slice(0,10));setDateTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>This Month</button>
+            <button onClick={()=>{setFrom(TODAY);setTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Today</button>
+            <button onClick={()=>{const d=new Date();d.setDate(d.getDate()-6);setFrom(d.toISOString().slice(0,10));setTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Last 7 Days</button>
+            <button onClick={()=>{const d=new Date();d.setDate(1);setFrom(d.toISOString().slice(0,10));setTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>This Month</button>
             <Btn onClick={reset} variant="outline" sm><RefreshCw size={11}/> Reset</Btn>
           </div>
         </div>
@@ -1917,7 +1931,16 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     loadIssues();loadAnnouncements()
     // Realtime for issues
     const rt1=supabase.channel('kitchen-issues-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
-      if(p.eventType==='INSERT')setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+      if(p.eventType==='INSERT'){
+        setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+        // Notify others when a new issue comes in
+        if(p.new.created_by!==user?.id){
+          const sch=schools.find(s=>s.id===p.new.school_id)
+          const kit=KIT[p.new.type]?.label||p.new.type
+          const prefix=p.new.priority==='urgent'?'🔴 URGENT':'📋 New Issue'
+          showLocalNotification('Ops Daily — '+prefix+': '+(sch?.name||'Unknown School'), kit+' — '+p.new.title+' | Reported by '+p.new.created_by_name)
+        }
+      }
       if(p.eventType==='UPDATE')setIssues(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old.id))
     }).subscribe()
@@ -1954,12 +1977,12 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     const kitType=KIT[ni.type]?.label||ni.type
     if(ni.priority==="urgent"){
       showLocalNotification(
-        "🔴 URGENT: "+schoolName,
+        "Ops Daily — 🔴 URGENT: "+schoolName,
         kitType+" — "+ni.title+(ni.description?" | "+ni.description.slice(0,80):"")+" | Reported by "+user.name
       )
     } else {
       showLocalNotification(
-        "📋 New Kitchen Issue: "+schoolName,
+        "Ops Daily — New Kitchen Issue: "+schoolName,
         kitType+" — "+ni.title+" | Reported by "+user.name
       )
     }
@@ -2305,7 +2328,17 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     })
     // Realtime for messages
     const rt=supabase.channel('km-messages-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
-      if(p.eventType==='INSERT')setMessages(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
+      if(p.eventType==='INSERT'){
+        setMessages(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
+        // Only notify if message is FROM someone else AND is directed to my school or all kitchens
+        const mySchoolIds=supaUsers.find(u=>u.id===user?.id)?.school_ids||[]
+        const isForMe=!p.new.to_school_id||mySchoolIds.includes(p.new.to_school_id)
+        if(p.new.from_user_id!==user?.id&&isForMe){
+          const sch=schools.find(s=>s.id===p.new.to_school_id)
+          const dest=sch?sch.name:'All Kitchens'
+          showLocalNotification('Ops Daily — New Message for '+dest, 'From '+p.new.from_name+': '+p.new.body.slice(0,100))
+        }
+      }
       if(p.eventType==='UPDATE')setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setMessages(prev=>prev.filter(x=>x.id!==p.old.id))
     }).subscribe()
@@ -2334,8 +2367,6 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     setNewMsgForm({to_school_id:"",body:""})
     setNewMsgModal(false)
     toast.show("Message sent!")
-    const toName=schools.find(s=>s.id===newMsgForm.to_school_id)?.name||"All Kitchens"
-    showLocalNotification("💬 Message sent to "+toName, nm.body.slice(0,100))
   }
 
   const sendReply=async(rootId,rootSchoolId)=>{
