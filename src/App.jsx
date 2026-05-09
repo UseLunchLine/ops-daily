@@ -244,9 +244,16 @@ export default function App(){
         if(p.eventType==='UPDATE')setRecaps(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
         if(p.eventType==='DELETE')setRecaps(prev=>prev.filter(x=>x.id!==p.old.id))
       }).subscribe()
-      const rt2=supabase.channel('issues-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},()=>{}).subscribe()
-      const rt3=supabase.channel('msgs-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},()=>{}).subscribe()
-      const rt4=supabase.channel('anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},()=>{}).subscribe()
+      const rt2=supabase.channel('calloffs-rt').on('postgres_changes',{event:'*',schema:'public',table:'calloffs'},p=>{
+        if(p.eventType==='INSERT')setCalloffs(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+        if(p.eventType==='UPDATE')setCalloffs(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+        if(p.eventType==='DELETE')setCalloffs(prev=>prev.filter(x=>x.id!==p.old.id))
+      }).subscribe()
+      const rt3=supabase.channel('events-rt').on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
+        if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+        if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+        if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old.id))
+      }).subscribe()
     }
     loadData()
   },[])
@@ -448,6 +455,12 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   const [dismissedAnns,setDismissedAnns]=useState([])
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(5).then(({data})=>{if(data)setAnnouncements(data)})
+    const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
+      if(p.eventType==='INSERT')setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
+      if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+      if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old.id))
+    }).subscribe()
+    return()=>rt.unsubscribe()
   },[])
   const [dateFrom,setDateFrom]=useState(TODAY)
   const [dateTo,setDateTo]=useState(TODAY)
@@ -1874,7 +1887,22 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const userSchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
   const mySchool=schools.find(s=>userSchoolIds.includes(s.id))
 
-  useEffect(()=>{loadIssues();loadAnnouncements()},[])
+  useEffect(()=>{
+    loadIssues();loadAnnouncements()
+    // Realtime for issues
+    const rt1=supabase.channel('kitchen-issues-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
+      if(p.eventType==='INSERT')setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+      if(p.eventType==='UPDATE')setIssues(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+      if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old.id))
+    }).subscribe()
+    // Realtime for announcements
+    const rt2=supabase.channel('announcements-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
+      if(p.eventType==='INSERT')setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+      if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+      if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old.id))
+    }).subscribe()
+    return()=>{rt1.unsubscribe();rt2.unsubscribe()}
+  },[])
 
   const loadIssues=async()=>{
     const{data}=await supabase.from("kitchen_issues").select("*").order("created_at",{ascending:false})
@@ -2235,6 +2263,13 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
       if(data)setMessages(data)
       setLoading(false)
     })
+    // Realtime for messages
+    const rt=supabase.channel('km-messages-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
+      if(p.eventType==='INSERT')setMessages(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
+      if(p.eventType==='UPDATE')setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+      if(p.eventType==='DELETE')setMessages(prev=>prev.filter(x=>x.id!==p.old.id))
+    }).subscribe()
+    return()=>rt.unsubscribe()
   },[])
 
   const sevenDaysAgo=new Date(Date.now()-7*24*60*60*1000).toISOString()
