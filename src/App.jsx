@@ -54,17 +54,43 @@ async function logAudit(action,entity,entityId,userId,userName,userRole,schoolId
   }catch(e){console.error('Audit log error:',e)}
 }
 
-async function requestPushPermission(userId){
-  if(!('Notification' in window)||!('serviceWorker' in navigator))return
+async function requestPushPermission(){
+  if(!('Notification' in window)){
+    alert('Your browser does not support notifications.')
+    return false
+  }
+  if(Notification.permission==='granted') return true
+  if(Notification.permission==='denied'){
+    alert('Notifications are blocked. Please enable them in your browser settings:\nClick the lock icon in the address bar → Notifications → Allow')
+    return false
+  }
   const perm=await Notification.requestPermission()
   if(perm==='granted'){
-    showLocalNotification('Ops Daily','Push notifications enabled. You will be alerted for urgent issues.')
+    new Notification('Ops Daily - Notifications Enabled',{
+      body:'You will now receive alerts for urgent kitchen issues, new messages, and announcements.',
+      icon:'/logo.png',
+      badge:'/logo.png'
+    })
+    return true
   }
+  return false
 }
 
-function showLocalNotification(title,body,icon='📊'){
+function showLocalNotification(title,body){
+  if(!('Notification' in window))return
   if(Notification.permission==='granted'){
-    new Notification(title,{body,icon:'/logo.png'})
+    const n=new Notification(title,{
+      body,
+      icon:'/logo.png',
+      badge:'/logo.png',
+      requireInteraction:true,
+      tag:title
+    })
+    n.onclick=()=>{window.focus();n.close()}
+  } else if(Notification.permission!=='denied'){
+    Notification.requestPermission().then(p=>{
+      if(p==='granted') showLocalNotification(title,body)
+    })
   }
 }
 async function callAI(messages,systemPrompt=""){
@@ -239,7 +265,7 @@ export default function App(){
       }
       setDbReady(true)
       // Realtime subscriptions
-      const rt1=supabase.channel('recaps-rt').on('postgres_changes',{event:'*',schema:'public',table:'recaps'},p=>{
+    const rt1=supabase.channel('recaps-rt').on('postgres_changes',{event:'*',schema:'public',table:'recaps'},p=>{
         if(p.eventType==='INSERT')setRecaps(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setRecaps(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
         if(p.eventType==='DELETE')setRecaps(prev=>prev.filter(x=>x.id!==p.old.id))
@@ -505,7 +531,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><Btn onClick={()=>requestPushPermission(user.id)} variant="outline" sm>🔔 Alerts</Btn><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
+      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><Btn onClick={()=>requestPushPermission()} variant="outline" sm style={{background:typeof Notification!=="undefined"&&Notification.permission==="granted"?"#F0FDF4":"#fff",borderColor:typeof Notification!=="undefined"&&Notification.permission==="granted"?"#16A34A":"#E2E8F0",color:typeof Notification!=="undefined"&&Notification.permission==="granted"?"#15803D":C.textMuted}}>{typeof Notification!=="undefined"&&Notification.permission==="granted"?"🔔 Alerts On":"🔔 Enable Alerts"}</Btn><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
       {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).length>0&&(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
           {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).map(ann=>{
@@ -1923,6 +1949,20 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     setIssues(p=>[ni,...p])
     setForm({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
     toast.show("Issue reported!")
+    // Fire notification to all staff for urgent issues
+    const schoolName=schools.find(s=>s.id===schoolId)?.name||"Unknown School"
+    const kitType=KIT[ni.type]?.label||ni.type
+    if(ni.priority==="urgent"){
+      showLocalNotification(
+        "🔴 URGENT: "+schoolName,
+        kitType+" — "+ni.title+(ni.description?" | "+ni.description.slice(0,80):"")+" | Reported by "+user.name
+      )
+    } else {
+      showLocalNotification(
+        "📋 New Kitchen Issue: "+schoolName,
+        kitType+" — "+ni.title+" | Reported by "+user.name
+      )
+    }
     setLoading(false)
   }
 
@@ -2294,6 +2334,8 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     setNewMsgForm({to_school_id:"",body:""})
     setNewMsgModal(false)
     toast.show("Message sent!")
+    const toName=schools.find(s=>s.id===newMsgForm.to_school_id)?.name||"All Kitchens"
+    showLocalNotification("💬 Message sent to "+toName, nm.body.slice(0,100))
   }
 
   const sendReply=async(rootId,rootSchoolId)=>{
