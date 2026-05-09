@@ -55,21 +55,27 @@ async function logAudit(action,entity,entityId,userId,userName,userRole,schoolId
 }
 
 async function requestPushPermission(){
+  // iOS Safari doesn't support notifications unless installed as PWA
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)
+  const isInStandaloneMode=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone
+  if(isIOS&&!isInStandaloneMode){
+    alert('To get notifications on iPhone/iPad:\n\n1. Tap the Share button (box with arrow)\n2. Tap "Add to Home Screen"\n3. Open Ops Daily from your home screen\n4. Then tap Enable Alerts again')
+    return false
+  }
   if(!('Notification' in window)){
-    alert('Your browser does not support notifications.')
+    alert('Your browser does not support notifications. Try Chrome or Edge.')
     return false
   }
   if(Notification.permission==='granted') return true
   if(Notification.permission==='denied'){
-    alert('Notifications are blocked. Please enable them in your browser settings:\nClick the lock icon in the address bar → Notifications → Allow')
+    alert('Notifications are blocked.\n\nTo fix:\nChrome: Click the lock icon → Notifications → Allow\nEdge: Click the lock icon → Notifications → Allow')
     return false
   }
   const perm=await Notification.requestPermission()
   if(perm==='granted'){
     new Notification('Ops Daily - Notifications Enabled',{
       body:'You will now receive alerts for urgent kitchen issues, new messages, and announcements.',
-      icon:'/logo.png',
-      badge:'/logo.png'
+      icon:'/logo.png'
     })
     return true
   }
@@ -476,6 +482,35 @@ function Login(){
   )
 }
 
+
+function AnnouncementBanner({announcements}){
+  const [dismissed,setDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem("dismissedAnns")||"[]")}catch{return[]}})
+  const dismiss=(id)=>{const u=[...dismissed,id];setDismissed(u);try{localStorage.setItem("dismissedAnns",JSON.stringify(u))}catch{}}
+  const visible=announcements.filter(a=>!dismissed.includes(a.id)&&!(a.expires_at&&new Date(a.expires_at)<new Date()))
+  if(!visible.length)return null
+  const ANN_COLORS={general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}}
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
+      {visible.map(ann=>{
+        const at=ANN_COLORS[ann.type]||ANN_COLORS.general
+        return(
+          <div key={ann.id} style={{background:at.bg,border:"1px solid "+at.color+"33",borderLeft:"4px solid "+at.color,borderRadius:R.lg,padding:"11px 14px",display:"flex",alignItems:"flex-start",gap:10}}>
+            <span style={{fontSize:18,flexShrink:0,marginTop:1}}>📢</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:800,fontSize:13,color:at.color,marginBottom:ann.body?2:0}}>{ann.title}</div>
+              {ann.body&&<div style={{fontSize:12,color:at.color,opacity:.85,lineHeight:1.5}}>{ann.body}</div>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+              <span style={{fontSize:10,color:at.color,opacity:.5,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
+              <button onClick={()=>dismiss(ann.id)} style={{width:22,height:22,borderRadius:"50%",border:"1px solid "+at.color+"44",background:"rgba(0,0,0,.05)",cursor:"pointer",color:at.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,lineHeight:1,flexShrink:0}}>✕</button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function AlertsBtn(){
   const granted=typeof Notification!=="undefined"&&Notification.permission==="granted"
   return(
@@ -487,7 +522,6 @@ function AlertsBtn(){
 
 function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
   const [announcements,setAnnouncements]=useState([])
-  const [dismissedAnns,setDismissedAnns]=useState(()=>{try{return JSON.parse(localStorage.getItem("dismissedAnns")||"[]")}catch{return[]}})
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(5).then(({data})=>{if(data)setAnnouncements(data)})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
@@ -546,29 +580,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><AlertsBtn/><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
-      {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).length>0&&(
-        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
-          {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).map(ann=>{
-            const at=({general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}})[ann.type]||{color:"#2563EB",bg:"#EFF6FF"}
-            const isExpired=ann.expires_at&&new Date(ann.expires_at)<new Date()
-            if(isExpired)return null
-            return(
-              <div key={ann.id} style={{background:at.bg,border:"1px solid "+at.color+"33",borderLeft:"4px solid "+at.color,borderRadius:R.lg,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
-                <span style={{fontSize:20,flexShrink:0}}>📢</span>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:800,fontSize:13,color:at.color,marginBottom:2}}>{ann.title}</div>
-                  {ann.body&&<div style={{fontSize:12,color:at.color,opacity:.8,lineHeight:1.5}}>{ann.body}</div>}
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                  {ann.expires_at&&<span style={{fontSize:10,color:at.color,opacity:.5}}>Expires {fd(ann.expires_at.slice(0,10))}</span>}
-                  <span style={{fontSize:11,color:at.color,opacity:.6,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
-                  <button onClick={()=>{const u=[...dismissedAnns,ann.id];setDismissedAnns(u);try{localStorage.setItem("dismissedAnns",JSON.stringify(u))}catch{}}} style={{background:"transparent",border:"none",cursor:"pointer",color:at.color,opacity:.5,display:"flex",padding:2,fontSize:16,lineHeight:1}}>✕</button>
-                </div>
-              </div>
-            )
-          }).filter(Boolean)}
-        </div>
-      )}
+      <AnnouncementBanner announcements={announcements}/>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
         {[{label:"Total Recaps",val:totalShown,color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},{label:"All Good",val:goodShown,color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{label:"Need Attention",val:issueShown,color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"}].map(c=>(
@@ -2504,10 +2516,11 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
     try{localStorage.setItem("readAnns",JSON.stringify(updated))}catch{}
     // Save acknowledgment to db
     const mySchoolId=(supaUsers.find(u=>u.id===user.id)?.school_ids||[])[0]
-    const exists=acks.find(a=>a.announcement_id===ann.id&&a.user_id===user.id)
-    if(!exists){
+    // Upsert so we never get duplicates - uses user_id+announcement_id as unique key
+    const existing=acks.find(a=>a.announcement_id===ann.id&&a.user_id===user.id)
+    if(!existing){
       const na={id:uid(),announcement_id:ann.id,school_id:mySchoolId||null,user_id:user.id,user_name:user.name||user.email,acknowledged_at:new Date().toISOString()}
-      await supabase.from("announcement_acknowledgments").insert(na)
+      await supabase.from("announcement_acknowledgments").upsert(na,{onConflict:"user_id,announcement_id",ignoreDuplicates:true})
       setAcks(p=>[...p,na])
     }
   }
