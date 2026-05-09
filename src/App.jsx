@@ -55,7 +55,9 @@ async function logAudit(action,entity,entityId,userId,userName,userRole,schoolId
 }
 
 async function requestPushPermission(){
-  // iOS Safari doesn't support notifications unless installed as PWA
+  // Register service worker for PWA notifications
+  if("serviceWorker" in navigator){try{await navigator.serviceWorker.register("/sw.js")}catch(e){console.log("SW:",e)}}
+  // iOS Safari needs PWA mode
   const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)
   const isInStandaloneMode=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone
   if(isIOS&&!isInStandaloneMode){
@@ -512,10 +514,22 @@ function AnnouncementBanner({announcements}){
 }
 
 function AlertsBtn(){
-  const granted=typeof Notification!=="undefined"&&Notification.permission==="granted"
+  const [status,setStatus]=useState(()=>typeof Notification!=="undefined"?Notification.permission:"default")
+  const toggle=async()=>{
+    if(status==="granted"){
+      // Can't programmatically disable - show instructions
+      alert("To turn off notifications:
+Chrome: Click the lock icon in the address bar → Notifications → Block
+Edge: Same as Chrome
+iOS: Settings → Notifications → Ops Daily → Off")
+      return
+    }
+    const result=await requestPushPermission()
+    if(result) setStatus("granted")
+  }
   return(
-    <button onClick={()=>requestPushPermission()} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:R.md,border:"1px solid "+(granted?"#16A34A":"#E2E8F0"),background:granted?"#F0FDF4":"#fff",color:granted?"#15803D":C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>
-      {granted?"🔔 Alerts On":"🔔 Enable Alerts"}
+    <button onClick={toggle} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:R.md,border:"1px solid "+(status==="granted"?"#16A34A":status==="denied"?"#DC2626":"#E2E8F0"),background:status==="granted"?"#F0FDF4":status==="denied"?"#FEF2F2":"#fff",color:status==="granted"?"#15803D":status==="denied"?"#DC2626":C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>
+      {status==="granted"?"🔔 Alerts On":status==="denied"?"🔕 Blocked":"🔔 Enable Alerts"}
     </button>
   )
 }
@@ -2659,14 +2673,7 @@ function StatsPage({recaps,calloffs,schools,directory,supaUsers,go}){
       </div>
 
       {/* No recap today */}
-      {noRecapToday.length>0&&(
-        <Box style={{marginBottom:20,padding:16,borderLeft:"4px solid #F59E0B",background:"#FFFBEB"}}>
-          <div style={{fontWeight:800,fontSize:14,color:"#B45309",marginBottom:8}}>⚠️ {noRecapToday.length} school{noRecapToday.length!==1?"s":""} haven't submitted today's recap</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {noRecapToday.map(s=><Pill key={s.id} bg="#FEF3C7" tx="#B45309" bd="#FDE68A">{s.name.split(" ")[0]}</Pill>)}
-          </div>
-        </Box>
-      )}
+
 
       <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
         {/* School performance table */}
