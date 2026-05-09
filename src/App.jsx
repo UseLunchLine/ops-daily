@@ -47,6 +47,26 @@ const fd=d=>new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",da
 const ft=ts=>new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})
 const fmt=t=>{if(!t)return "";const[h,m]=t.split(":");const hr=parseInt(h);return(hr===0?12:hr>12?hr-12:hr)+":"+m+(hr<12?" AM":" PM")}
 
+
+async function logAudit(action,entity,entityId,userId,userName,userRole,schoolId,details={}){
+  try{
+    await supabase.from('audit_logs').insert({id:uid(),action,entity,entity_id:entityId,user_id:userId,user_name:userName,user_role:userRole,school_id:schoolId||null,details,created_at:new Date().toISOString()})
+  }catch(e){console.error('Audit log error:',e)}
+}
+
+async function requestPushPermission(userId){
+  if(!('Notification' in window)||!('serviceWorker' in navigator))return
+  const perm=await Notification.requestPermission()
+  if(perm==='granted'){
+    showLocalNotification('Ops Daily','Push notifications enabled! You'll be alerted for urgent issues.')
+  }
+}
+
+function showLocalNotification(title,body,icon='📊'){
+  if(Notification.permission==='granted'){
+    new Notification(title,{body,icon:'/logo.png'})
+  }
+}
 async function callAI(messages,systemPrompt=""){
   try{
     const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,...(systemPrompt?{system:systemPrompt}:{}),messages})})
@@ -218,6 +238,15 @@ export default function App(){
         }))
       }
       setDbReady(true)
+      // Realtime subscriptions
+      const rt1=supabase.channel('recaps-rt').on('postgres_changes',{event:'*',schema:'public',table:'recaps'},p=>{
+        if(p.eventType==='INSERT')setRecaps(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+        if(p.eventType==='UPDATE')setRecaps(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+        if(p.eventType==='DELETE')setRecaps(prev=>prev.filter(x=>x.id!==p.old.id))
+      }).subscribe()
+      const rt2=supabase.channel('issues-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},()=>{}).subscribe()
+      const rt3=supabase.channel('msgs-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},()=>{}).subscribe()
+      const rt4=supabase.channel('anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},()=>{}).subscribe()
     }
     loadData()
   },[])
@@ -246,17 +275,20 @@ export default function App(){
 
   const navItems=isKM?[
     {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
+    {id:"checklist",label:"Daily Checklist",short:"Checklist",I:CheckSquare},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
   ]:[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
     {id:"submit",label:"Submit Recap",short:"Submit",I:PlusCircle},
     {id:"schools",label:"Schools",short:"Schools",I:Building2},
     ...(perms.calloffs?[{id:"calloffs",label:"Call-Off Tracking",short:"Call-Offs",I:ClipboardList}]:[]),
-    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:CheckSquare},
+    {id:"stats",label:"District Stats",short:"Stats",I:BarChart3},
+    {id:"checklist",label:"Daily Checklist",short:"Checklist",I:CheckSquare},
+    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
     {id:"events",label:"Calendar",short:"Calendar",I:CalendarDays},
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
-    ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
+    ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck},{id:"auditlog",label:"Audit Log",short:"Audit",I:StickyNote}]:[]),
   ]
 
   const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,events,setEvents,go,sById,uById,ctx,isAdmin:perms.admin}
@@ -269,6 +301,9 @@ export default function App(){
     if(page==="directory")return <DirPage {...props}/>
     if(page==="map")return <MapPage {...props}/>
     if(page==="events")return <EventsPage {...props}/>
+    if(page==="stats")return <StatsPage {...props}/>
+    if(page==="checklist")return <ChecklistPage {...props}/>
+    if(page==="auditlog")return <AuditPage {...props}/>
     if(page==="kitchen")return <KitchenPage {...props}/>
     if(page==="admin") return <AdminPage {...props}/>
     return <DashPage {...props}/>
@@ -457,7 +492,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn>}/>
+      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8"}}><Btn onClick={()=>requestPushPermission(user.id)} variant="outline" sm>🔔 Alerts</Btn><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
       {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).length>0&&(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
           {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).map(ann=>{
@@ -1159,10 +1194,7 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
                   <td style={{padding:"11px 14px"}}><Pill bg={rm.bg} tx={rm.color}>{roleLabel}</Pill></td>
                   <td style={{padding:"11px 14px",fontSize:12,color:C.text,maxWidth:220}}>
                     {(e.school_ids||[]).length>0?(
-                      <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-                        {(e.school_ids||[]).slice(0,2).map(id=>{const s=sById(id);const tc=s?TC[s.type]:null;return s?<span key={id} style={{background:tc?tc.bg:"#F8FAFC",color:tc?tc.tx:C.textMuted,border:"1px solid "+(tc?tc.bd:"#E2E8F0"),padding:"1px 7px",borderRadius:R.full,fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{s.name}</span>:null})}
-                        {(e.school_ids||[]).length>2&&<span style={{fontSize:11,color:C.textLight,alignSelf:"center"}}>+{(e.school_ids||[]).length-2} more</span>}
-                      </div>
+                      <SchoolPills schoolIds={e.school_ids||[]} schools={schools}/>
                     ):<span style={{color:C.textLight}}>--</span>}
                   </td>
                   <td style={{padding:"11px 14px",whiteSpace:"nowrap"}}>{e.phone?<a href={"tel:"+e.phone} style={{color:C.primary,textDecoration:"none",fontSize:13,fontWeight:600}}>{e.phone}</a>:<span style={{color:C.textLight}}>--</span>}</td>
@@ -2013,7 +2045,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
       {/* ANNOUNCEMENTS - both KM and staff see this */}
       {tab==="announcements"&&(
-        <AnnTab announcements={announcements} setAnnouncements={setAnnouncements} canManageAll={canManageAll} isKM={isKM} onPost={()=>setAnnModal(true)} toast={toast}/>
+        <AnnTab announcements={announcements} setAnnouncements={setAnnouncements} canManageAll={canManageAll} isKM={isKM} onPost={()=>setAnnModal(true)} toast={toast} user={user} schools={schools} supaUsers={supaUsers}/>
       )}
 
       {/* CALENDAR - KM sees events */}
@@ -2216,8 +2248,8 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     .sort((a,b)=>new Date(b.root.created_at)-new Date(a.root.created_at))
 
   const threads=showPrevious
-    ?allThreads.filter(t=>t.root.created_at<sevenDaysAgo)
-    :allThreads.filter(t=>t.root.created_at>=sevenDaysAgo)
+    ?allThreads.filter(t=>t.root.created_at<sevenDaysAgo||t.root.closed)
+    :allThreads.filter(t=>t.root.created_at>=sevenDaysAgo&&!t.root.closed)
 
   const sendNew=async()=>{
     if(!newMsgForm.body.trim())return
@@ -2289,7 +2321,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
       </div>
 
       {loading?<Box style={{textAlign:"center",padding:32,color:C.textMuted}}>Loading...</Box>
-      :threads.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontWeight:700}}>{showPrevious?"No previous messages":"No new messages in the last 7 days"}</div>{canSend&&!showPrevious&&<div style={{marginTop:12}}><Btn onClick={()=>setNewMsgModal(true)} sm>Send First Message</Btn></div>}</Box>
+      :threads.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontWeight:700}}>{showPrevious?"No messages older than 30 days":"No new messages in the last 30 days"}</div>{canSend&&!showPrevious&&<div style={{marginTop:12}}><Btn onClick={()=>setNewMsgModal(true)} sm>Send First Message</Btn></div>}</Box>
       :<div style={{display:"flex",flexDirection:"column",gap:12}}>
         {threads.map(({root,replies})=>{
           const sch=schools.find(s=>s.id===root.to_school_id)
@@ -2315,6 +2347,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
               <div style={{padding:"8px 16px",borderTop:"1px solid #F1F5F9",display:"flex",gap:8,flexWrap:"wrap"}}>
                 {canAck&&<button onClick={()=>acknowledge(root.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BBF7D0",background:"#F0FDF4",color:"#15803D",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}><Check size={11}/>Acknowledge</button>}
                 <button onClick={()=>setShowReply(p=>({...p,[root.id]:!p[root.id]}))} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↩ Reply</button>
+                <button onClick={async()=>{await supabase.from("kitchen_messages").update({closed:true}).eq("id",root.id);setMessages(p=>p.map(x=>x.id===root.id?{...x,closed:true}:x));toast.show("Thread closed.")}} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#F8FAFC",color:C.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
               </div>
               {showReply[root.id]&&(
                 <div style={{padding:"0 16px 12px",display:"flex",gap:8}}>
@@ -2347,14 +2380,40 @@ function SchoolPills({schoolIds,schools}){
   )
 }
 
-// Announcements tab with KM dismiss (read) button
-function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast}){
+// Announcements tab with KM dismiss (read) button and acknowledgment tracking
+function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,user,schools,supaUsers}){
   const [readIds,setReadIds]=useState(()=>{try{return JSON.parse(localStorage.getItem("readAnns")||"[]")}catch{return[]}})
-  const markRead=(id)=>{
-    const updated=[...readIds,id]
+  const [acks,setAcks]=useState([])
+  const [showAcks,setShowAcks]=useState(null)
+
+  useEffect(()=>{
+    supabase.from("announcement_acknowledgments").select("*").then(({data})=>{if(data)setAcks(data)})
+  },[])
+
+  const markRead=async(ann)=>{
+    const updated=[...readIds,ann.id]
     setReadIds(updated)
     try{localStorage.setItem("readAnns",JSON.stringify(updated))}catch{}
+    // Save acknowledgment to db
+    const mySchoolId=(supaUsers.find(u=>u.id===user.id)?.school_ids||[])[0]
+    const exists=acks.find(a=>a.announcement_id===ann.id&&a.user_id===user.id)
+    if(!exists){
+      const na={id:uid(),announcement_id:ann.id,school_id:mySchoolId||null,user_id:user.id,user_name:user.name||user.email,acknowledged_at:new Date().toISOString()}
+      await supabase.from("announcement_acknowledgments").insert(na)
+      setAcks(p=>[...p,na])
+    }
   }
+
+  const getAckSchools=(annId)=>{
+    const annAcks=acks.filter(a=>a.announcement_id===annId)
+    return annAcks
+  }
+
+  const getNotAcked=(annId)=>{
+    const ackedSchoolIds=new Set(acks.filter(a=>a.announcement_id===annId).map(a=>a.school_id))
+    return schools.filter(s=>!ackedSchoolIds.has(s.id)&&s.type!=="office")
+  }
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {canManageAll&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}><Btn onClick={onPost} sm><Plus size={13}/> Post Announcement</Btn></div>}
@@ -2363,22 +2422,46 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast})
       ):announcements.map(ann=>{
         const at=ANN_TYPES[ann.type]||ANN_TYPES.general
         const isRead=readIds.includes(ann.id)
+        const annAcks=getAckSchools(ann.id)
+        const notAcked=getNotAcked(ann.id)
         return(
-          <Box key={ann.id} style={{padding:16,borderLeft:"4px solid "+at.color,opacity:isRead?.7:1}}>
+          <Box key={ann.id} style={{padding:16,borderLeft:"4px solid "+at.color,opacity:isRead&&isKM?.8:1}}>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
                   <Pill bg={at.bg} tx={at.color}>{at.label}</Pill>
-                  {isRead&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">✓ Read</Pill>}
+                  {isRead&&isKM&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">✓ Read</Pill>}
                   <span style={{fontSize:11,color:C.textLight}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
                   {ann.created_by_name&&<span style={{fontSize:11,color:C.textLight}}>by {ann.created_by_name}</span>}
+                  {ann.expires_at&&<span style={{fontSize:11,color:C.textLight}}>· expires {fd(ann.expires_at)}</span>}
                 </div>
                 <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:6}}>{ann.title}</div>
-                {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7}}>{ann.body}</div>}
+                {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7,marginBottom:10}}>{ann.body}</div>}
+                {/* Acknowledgment tracking for managers */}
+                {canManageAll&&annAcks.length>0&&(
+                  <div style={{marginTop:8}}>
+                    <button onClick={()=>setShowAcks(showAcks===ann.id?null:ann.id)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#15803D",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
+                      ✓ {annAcks.length} acknowledged · {notAcked.length} pending
+                    </button>
+                    {showAcks===ann.id&&(
+                      <div style={{marginTop:8,display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        <div>
+                          <div style={{fontSize:10,fontWeight:700,color:"#15803D",marginBottom:4,textTransform:"uppercase",letterSpacing:".05em"}}>✓ Acknowledged</div>
+                          {annAcks.map(a=><div key={a.id} style={{fontSize:11,color:C.text,padding:"3px 0",display:"flex",alignItems:"center",gap:4}}><span style={{color:"#15803D"}}>✓</span>{a.user_name}</div>)}
+                        </div>
+                        <div>
+                          <div style={{fontSize:10,fontWeight:700,color:"#DC2626",marginBottom:4,textTransform:"uppercase",letterSpacing:".05em"}}>⏳ Pending</div>
+                          {notAcked.slice(0,8).map(s=><div key={s.id} style={{fontSize:11,color:C.text,padding:"3px 0",display:"flex",alignItems:"center",gap:4}}><span style={{color:"#DC2626"}}>○</span>{s.name.split(" ")[0]}</div>)}
+                          {notAcked.length>8&&<div style={{fontSize:11,color:C.textLight}}>+{notAcked.length-8} more</div>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
                 {isKM&&!isRead&&(
-                  <button onClick={()=>markRead(ann.id)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#15803D",fontSize:11,fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}><Check size={10}/>Mark Read</button>
+                  <button onClick={()=>markRead(ann)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"5px 10px",cursor:"pointer",color:"#15803D",fontSize:11,fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}><Check size={10}/>Acknowledge</button>
                 )}
                 {canManageAll&&<button onClick={async()=>{if(!window.confirm("Delete?"))return;await supabase.from("announcements").delete().eq("id",ann.id);setAnnouncements(p=>p.filter(x=>x.id!==ann.id));toast.show("Deleted.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 8px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>Del</button>}
               </div>
@@ -2386,6 +2469,340 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast})
           </Box>
         )
       })}
+    </div>
+  )
+}
+
+// ============================================================
+// DISTRICT STATS PAGE
+// ============================================================
+function StatsPage({recaps,calloffs,schools,directory,supaUsers,go}){
+  const [period,setPeriod]=useState("30")
+  const [mobile,setMobile]=useState(window.innerWidth<768)
+  useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
+
+  const cutoff=new Date(Date.now()-parseInt(period)*24*60*60*1000).toISOString().slice(0,10)
+  const pr=recaps.filter(r=>r.date>=cutoff)
+  const pc=calloffs.filter(c=>c.date>=cutoff)
+
+  // Top stats
+  const totalRecaps=pr.length
+  const resolvedPct=pr.length?Math.round(pr.filter(r=>r.resolved).length/pr.length*100):0
+  const majorIssues=pr.filter(r=>r.status==="red").length
+  const totalCalloffs=pc.length
+  const ncns=pc.filter(c=>c.type==="ncns").length
+
+  // By school
+  const schoolStats=schools.filter(s=>s.type!=="office").map(s=>{
+    const sr=pr.filter(r=>r.school_id===s.id)
+    const sc=pc.filter(c=>c.school_id===s.id)
+    return{s,recaps:sr.length,major:sr.filter(r=>r.status==="red").length,resolved:sr.filter(r=>r.resolved).length,calloffs:sc.length,ncns:sc.filter(c=>c.type==="ncns").length,score:sr.length>0?Math.round((sr.filter(r=>r.status==="green").length/sr.length)*100):100}
+  }).sort((a,b)=>b.major-a.major||b.calloffs-a.calloffs)
+
+  // Top call-off staff
+  const staffCalloffs=pc.reduce((a,c)=>{a[c.staff_name]=(a[c.staff_name]||0)+1;return a},{})
+  const topStaff=Object.entries(staffCalloffs).sort((a,b)=>b[1]-a[1]).slice(0,10)
+
+  // Status breakdown
+  const statusBreakdown=STATS.map(s=>({...s,count:pr.filter(r=>r.status===s.id).length}))
+
+  // No recap schools today
+  const todayRecapSchools=new Set(recaps.filter(r=>r.date===TODAY).map(r=>r.school_id))
+  const noRecapToday=schools.filter(s=>s.type!=="office"&&!todayRecapSchools.has(s.id))
+
+  const StatCard=({n,l,sub,color="#2563EB",bg="#EFF6FF"})=>(
+    <div style={{background:bg,borderRadius:R.lg,padding:"16px 20px",border:"1px solid "+color+"33",textAlign:"center"}}>
+      <div style={{fontSize:36,fontWeight:900,color,lineHeight:1}}>{n}</div>
+      <div style={{fontSize:12,fontWeight:700,color,marginTop:4}}>{l}</div>
+      {sub&&<div style={{fontSize:11,color,opacity:.7,marginTop:2}}>{sub}</div>}
+    </div>
+  )
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="District Stats" subtitle="Live operational overview across all SBCSC schools"/>
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:12,fontWeight:600,color:C.textMuted}}>Period:</span>
+        {[{v:"7",l:"7 Days"},{v:"30",l:"30 Days"},{v:"90",l:"90 Days"}].map(p=>(
+          <button key={p.v} onClick={()=>setPeriod(p.v)} style={{padding:"5px 14px",borderRadius:R.full,border:"1px solid "+(period===p.v?"#2563EB":"#E2E8F0"),background:period===p.v?"#EFF6FF":"#fff",color:period===p.v?"#2563EB":C.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{p.l}</button>
+        ))}
+      </div>
+
+      {/* Top KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(5,1fr)",gap:10,marginBottom:24}}>
+        <StatCard n={totalRecaps} l="Total Recaps" bg="#EFF6FF" color="#2563EB"/>
+        <StatCard n={resolvedPct+"%"} l="Resolution Rate" bg="#F0FDF4" color="#16A34A"/>
+        <StatCard n={majorIssues} l="Major Problems" bg="#FEF2F2" color="#DC2626"/>
+        <StatCard n={totalCalloffs} l="Call-Offs" bg="#FFFBEB" color="#D97706"/>
+        <StatCard n={ncns} l="NCNS" bg="#FEF2F2" color="#DC2626" sub="No Call No Show"/>
+      </div>
+
+      {/* No recap today */}
+      {noRecapToday.length>0&&(
+        <Box style={{marginBottom:20,padding:16,borderLeft:"4px solid #F59E0B",background:"#FFFBEB"}}>
+          <div style={{fontWeight:800,fontSize:14,color:"#B45309",marginBottom:8}}>⚠️ {noRecapToday.length} school{noRecapToday.length!==1?"s":""} haven't submitted today's recap</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {noRecapToday.map(s=><Pill key={s.id} bg="#FEF3C7" tx="#B45309" bd="#FDE68A">{s.name.split(" ")[0]}</Pill>)}
+          </div>
+        </Box>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"1fr 1fr",gap:16,marginBottom:16}}>
+        {/* School performance table */}
+        <Box style={{padding:0,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",borderBottom:"1px solid #E2E8F0",fontWeight:800,fontSize:14,color:C.text}}>🏫 School Performance</div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                <tr style={{background:"#F8FAFC"}}>
+                  <th style={{padding:"8px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:C.textMuted}}>School</th>
+                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:11,fontWeight:700,color:C.textMuted}}>Recaps</th>
+                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:11,fontWeight:700,color:"#DC2626"}}>Major</th>
+                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:11,fontWeight:700,color:"#D97706"}}>C/O</th>
+                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:11,fontWeight:700,color:"#16A34A"}}>Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {schoolStats.filter(s=>s.recaps>0||s.calloffs>0).slice(0,15).map(({s,recaps,major,calloffs,score},i)=>(
+                  <tr key={s.id} style={{borderTop:"1px solid #F1F5F9",background:i%2===0?"#fff":"#FAFAFA"}}>
+                    <td style={{padding:"8px 12px",fontSize:12,fontWeight:600,color:C.text,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name.split(" ")[0]}</td>
+                    <td style={{padding:"8px 12px",textAlign:"center",fontSize:12,color:C.textMuted}}>{recaps}</td>
+                    <td style={{padding:"8px 12px",textAlign:"center"}}>{major>0?<span style={{background:"#FEF2F2",color:"#DC2626",fontWeight:700,fontSize:11,padding:"1px 6px",borderRadius:R.full}}>{major}</span>:<span style={{color:C.textLight,fontSize:12}}>0</span>}</td>
+                    <td style={{padding:"8px 12px",textAlign:"center"}}>{calloffs>0?<span style={{background:"#FFFBEB",color:"#D97706",fontWeight:700,fontSize:11,padding:"1px 6px",borderRadius:R.full}}>{calloffs}</span>:<span style={{color:C.textLight,fontSize:12}}>0</span>}</td>
+                    <td style={{padding:"8px 12px",textAlign:"center"}}><span style={{background:score>=90?"#F0FDF4":score>=70?"#FFFBEB":"#FEF2F2",color:score>=90?"#16A34A":score>=70?"#D97706":"#DC2626",fontWeight:700,fontSize:11,padding:"2px 7px",borderRadius:R.full}}>{score}%</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Box>
+
+        {/* Top call-off staff */}
+        <Box style={{padding:0,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",borderBottom:"1px solid #E2E8F0",fontWeight:800,fontSize:14,color:C.text}}>📋 Top Call-Off Staff</div>
+          {topStaff.length===0?<div style={{padding:24,textAlign:"center",color:C.textMuted,fontSize:13}}>No call-offs in this period</div>:(
+            <div style={{padding:"8px 0"}}>
+              {topStaff.map(([name,count],i)=>(
+                <div key={name} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 16px",borderBottom:i<topStaff.length-1?"1px solid #F8FAFC":"none"}}>
+                  <span style={{width:22,height:22,borderRadius:"50%",background:count>=4?"#FEF2F2":count>=2?"#FFFBEB":"#F8FAFC",color:count>=4?"#DC2626":count>=2?"#D97706":C.textMuted,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+                  <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{name}</span>
+                  <span style={{background:count>=4?"#FEF2F2":count>=2?"#FFFBEB":"#EFF6FF",color:count>=4?"#DC2626":count>=2?"#D97706":"#2563EB",fontWeight:700,fontSize:12,padding:"2px 8px",borderRadius:R.full}}>{count}x</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Box>
+      </div>
+
+      {/* Status breakdown */}
+      <Box style={{padding:16}}>
+        <div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:14}}>📊 Status Breakdown — Last {period} Days</div>
+        <div style={{display:"grid",gridTemplateColumns:mobile?"repeat(3,1fr)":"repeat(6,1fr)",gap:10}}>
+          {statusBreakdown.map(s=>(
+            <div key={s.id} style={{background:s.l,borderRadius:R.lg,padding:"12px 10px",border:"1px solid "+s.b,textAlign:"center"}}>
+              <div style={{fontSize:26,fontWeight:900,color:s.c}}>{s.count}</div>
+              <div style={{fontSize:10,fontWeight:700,color:s.t,marginTop:3}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </Box>
+    </div>
+  )
+}
+
+// ============================================================
+// DAILY CHECKLIST PAGE
+// ============================================================
+const CHECKLIST_ITEMS=[
+  {id:"temp_log",label:"Temperature Log Completed",cat:"Food Safety"},
+  {id:"food_delivery",label:"Food Delivery Received & Verified",cat:"Food Safety"},
+  {id:"storage_check",label:"Storage Areas Checked (Fridge/Freezer/Dry)",cat:"Food Safety"},
+  {id:"cleaning_done",label:"Daily Cleaning Completed",cat:"Sanitation"},
+  {id:"surfaces_sanitized",label:"All Surfaces Sanitized",cat:"Sanitation"},
+  {id:"handwashing",label:"Handwashing Stations Stocked",cat:"Sanitation"},
+  {id:"equipment_check",label:"Equipment Functioning Properly",cat:"Equipment"},
+  {id:"serving_line",label:"Serving Line Set Up",cat:"Operations"},
+  {id:"meal_count",label:"Meal Count Recorded",cat:"Operations"},
+  {id:"staff_present",label:"All Scheduled Staff Present",cat:"Staffing"},
+  {id:"uniform_compliance",label:"Staff Uniform Compliance",cat:"Staffing"},
+  {id:"opening_on_time",label:"Opened On Time",cat:"Operations"},
+]
+const CHECKLIST_CATS=[...new Set(CHECKLIST_ITEMS.map(i=>i.cat))]
+
+function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
+  const [submissions,setSubmissions]=useState([])
+  const [tab,setTab]=useState("submit")
+  const [form,setForm]=useState({school_id:"",date:TODAY,items:{},notes:""})
+  const [loading,setLoading]=useState(false)
+  const [mobile,setMobile]=useState(window.innerWidth<768)
+  useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
+
+  const isKM=user.role==="kitchen_manager"
+  const mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
+  const mySchool=schools.find(s=>mySchoolIds.includes(s.id))
+
+  useEffect(()=>{
+    supabase.from("checklist_submissions").select("*").order("created_at",{ascending:false}).then(({data})=>{if(data)setSubmissions(data)})
+  },[])
+
+  const completedCount=Object.values(form.items).filter(Boolean).length
+  const totalItems=CHECKLIST_ITEMS.length
+
+  const submit=async()=>{
+    const schoolId=isKM?mySchool?.id:form.school_id
+    if(!schoolId){toast.show("Select a school","error");return}
+    const missing=CHECKLIST_ITEMS.filter(i=>!form.items[i.id])
+    if(missing.length>3){toast.show("Please complete at least "+(totalItems-3)+" items","error");return}
+    setLoading(true)
+    const ns={id:uid(),school_id:schoolId,date:form.date,submitted_by:user.id,submitted_by_name:user.name||user.email,items:form.items,notes:form.notes,created_at:new Date().toISOString()}
+    const{error}=await supabase.from("checklist_submissions").insert(ns)
+    if(error){toast.show("Failed: "+error.message,"error");setLoading(false);return}
+    setSubmissions(p=>[ns,...p])
+    logAudit("submit_checklist","checklist_submissions",ns.id,user.id,user.name||user.email,user.role,schoolId,{completed:completedCount,total:totalItems})
+    setForm({school_id:"",date:TODAY,items:{},notes:""})
+    toast.show("Checklist submitted!")
+    setLoading(false)
+  }
+
+  const mySubmissions=isKM?submissions.filter(s=>mySchoolIds.includes(s.school_id)):submissions
+  const todaySubmitted=mySubmissions.filter(s=>s.date===TODAY)
+  const notSubmittedToday=schools.filter(s=>s.type!=="office"&&!todaySubmitted.find(sub=>sub.school_id===s.id))
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="Daily Checklist" subtitle={isKM?(mySchool?.name||"Your Kitchen"):"Track daily kitchen compliance across all schools"}/>
+      <TabBar tabs={[{id:"submit",label:"✅ Submit"},{id:"history",label:"📋 History"},{id:"overview",label:"📊 Overview"}]} active={tab} set={setTab}/>
+
+      {tab==="submit"&&(
+        <div style={{maxWidth:600,display:"flex",flexDirection:"column",gap:14}}>
+          {isKM&&mySchool&&<div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1D4ED8"}}>📍 Submitting for: {mySchool.name}</div>}
+          {!isKM&&<Box style={{marginBottom:4}}><L>School</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></Box>}
+          <Box style={{marginBottom:4}}><L>Date</L><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={{...inp}} max={TODAY}/></Box>
+
+          {/* Progress bar */}
+          <div style={{background:"#F1F5F9",borderRadius:R.full,height:8,overflow:"hidden",marginBottom:4}}>
+            <div style={{background:completedCount===totalItems?"#16A34A":"#2563EB",height:"100%",borderRadius:R.full,width:(completedCount/totalItems*100)+"%",transition:"width .3s"}}/>
+          </div>
+          <div style={{fontSize:12,color:C.textMuted,textAlign:"right",marginTop:-8}}>{completedCount}/{totalItems} items completed</div>
+
+          {CHECKLIST_CATS.map(cat=>(
+            <Box key={cat} style={{padding:16}}>
+              <div style={{fontSize:11,fontWeight:800,color:C.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:10}}>{cat}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {CHECKLIST_ITEMS.filter(i=>i.cat===cat).map(item=>{
+                  const checked=!!form.items[item.id]
+                  return(
+                    <button key={item.id} onClick={()=>setForm(f=>({...f,items:{...f.items,[item.id]:!f.items[item.id]}}))} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:R.md,border:"2px solid "+(checked?"#16A34A":"#E2E8F0"),background:checked?"#F0FDF4":"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                      <span style={{width:20,height:20,borderRadius:5,border:"2px solid "+(checked?"#16A34A":"#CBD5E1"),background:checked?"#16A34A":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#fff",fontSize:13}}>{checked?"✓":""}</span>
+                      <span style={{fontSize:13,fontWeight:checked?600:400,color:checked?"#15803D":C.text}}>{item.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </Box>
+          ))}
+          <Box><L>Notes / Issues</L><textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Any additional notes or issues to flag..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></Box>
+          <Btn onClick={submit} disabled={loading}><CheckCircle size={14}/>{loading?"Submitting...":"Submit Checklist"}</Btn>
+        </div>
+      )}
+
+      {tab==="history"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {mySubmissions.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No submissions yet.</Box>
+          :mySubmissions.slice(0,50).map(s=>{
+            const sch=schools.find(x=>x.id===s.school_id)
+            const done=Object.values(s.items||{}).filter(Boolean).length
+            const pct=Math.round(done/totalItems*100)
+            return(
+              <Box key={s.id} style={{padding:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3}}>{sch?.name||"--"}</div>
+                  <div style={{fontSize:11,color:C.textMuted}}>{fd(s.date)} · by {s.submitted_by_name}</div>
+                  {s.notes&&<div style={{fontSize:12,color:C.textMuted,marginTop:4,fontStyle:"italic"}}>"{s.notes}"</div>}
+                </div>
+                <div style={{textAlign:"center",flexShrink:0}}>
+                  <div style={{width:48,height:48,borderRadius:"50%",background:pct===100?"#F0FDF4":"#EFF6FF",border:"3px solid "+(pct===100?"#16A34A":"#2563EB"),display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:12,fontWeight:800,color:pct===100?"#16A34A":"#2563EB"}}>{pct}%</span>
+                  </div>
+                </div>
+              </Box>
+            )
+          })}
+        </div>
+      )}
+
+      {tab==="overview"&&!isKM&&(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Box style={{padding:16,borderLeft:"4px solid #F59E0B",background:"#FFFBEB"}}>
+            <div style={{fontWeight:800,fontSize:14,color:"#B45309",marginBottom:8}}>⚠️ {notSubmittedToday.length} school{notSubmittedToday.length!==1?"s":""} haven't submitted today</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {notSubmittedToday.map(s=><Pill key={s.id} bg="#FEF3C7" tx="#B45309" bd="#FDE68A">{s.name.split(" ")[0]}</Pill>)}
+            </div>
+          </Box>
+          <div style={{fontWeight:700,fontSize:13,color:C.textMuted,padding:"4px 2px"}}>Today's Submissions ({todaySubmitted.length})</div>
+          {todaySubmitted.map(s=>{
+            const sch=schools.find(x=>x.id===s.school_id)
+            const done=Object.values(s.items||{}).filter(Boolean).length
+            const pct=Math.round(done/totalItems*100)
+            return(
+              <Box key={s.id} style={{padding:12,display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"}}>
+                <div style={{fontWeight:600,fontSize:13,color:C.text}}>{sch?.name||"--"}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:11,color:C.textMuted}}>by {s.submitted_by_name}</span>
+                  <Pill bg={pct===100?"#F0FDF4":"#EFF6FF"} tx={pct===100?"#16A34A":"#2563EB"} bd={pct===100?"#BBF7D0":"#BFDBFE"}>{pct}%</Pill>
+                </div>
+              </Box>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// AUDIT LOG PAGE (Admin only)
+// ============================================================
+function AuditPage({user,schools,isAdmin}){
+  const [logs,setLogs]=useState([])
+  const [loading,setLoading]=useState(true)
+  const [filter,setFilter]=useState("")
+
+  useEffect(()=>{
+    supabase.from("audit_logs").select("*").order("created_at",{ascending:false}).limit(200).then(({data})=>{
+      if(data)setLogs(data)
+      setLoading(false)
+    })
+  },[])
+
+  const filtered=filter?logs.filter(l=>l.action?.includes(filter)||l.user_name?.toLowerCase().includes(filter.toLowerCase())||l.entity?.includes(filter)):logs
+
+  const actionColors={submit_recap:"#2563EB",resolve_issue:"#16A34A",log_calloff:"#D97706",submit_checklist:"#7C3AED",delete:"#DC2626",login:"#0891B2",update:"#0F766E"}
+  const sById=id=>schools.find(s=>s.id===id)
+
+  return(
+    <div style={{padding:"24px 20px"}}>
+      <PageHeader title="Audit Log" subtitle="Full history of all actions taken in Ops Daily"/>
+      <Box style={{marginBottom:16,padding:"12px 16px"}}>
+        <Inp value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter by action, user, or entity..."/>
+      </Box>
+      {loading?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>Loading...</Box>
+      :filtered.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No audit logs found.</Box>
+      :<div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {filtered.map(log=>{
+          const ac=actionColors[log.action]||"#64748B"
+          const sch=sById(log.school_id)
+          return(
+            <Box key={log.id} style={{padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <span style={{background:ac+"15",color:ac,fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:R.full,textTransform:"uppercase",letterSpacing:".05em",flexShrink:0}}>{log.action?.replace(/_/g," ")}</span>
+              <span style={{fontSize:13,fontWeight:600,color:C.text,flex:1}}>{log.user_name||"--"}</span>
+              {log.user_role&&<Pill bg="#F1F5F9" tx="#475569">{log.user_role}</Pill>}
+              {sch&&<span style={{fontSize:11,color:C.textMuted}}>📍 {sch.name.split(" ")[0]}</span>}
+              <span style={{fontSize:11,color:C.textLight,flexShrink:0}}>{ft(log.created_at)}</span>
+            </Box>
+          )
+        })}
+      </div>}
     </div>
   )
 }
