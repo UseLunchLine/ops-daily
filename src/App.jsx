@@ -58,7 +58,7 @@ async function requestPushPermission(userId){
   if(!('Notification' in window)||!('serviceWorker' in navigator))return
   const perm=await Notification.requestPermission()
   if(perm==='granted'){
-    showLocalNotification('Ops Daily','Push notifications enabled! You'll be alerted for urgent issues.')
+    showLocalNotification('Ops Daily','Push notifications enabled. You will be alerted for urgent issues.')
   }
 }
 
@@ -492,7 +492,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8"}}><Btn onClick={()=>requestPushPermission(user.id)} variant="outline" sm>🔔 Alerts</Btn><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
+      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><Btn onClick={()=>requestPushPermission(user.id)} variant="outline" sm>🔔 Alerts</Btn><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
       {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).length>0&&(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
           {announcements.filter(ann=>!dismissedAnns.includes(ann.id)).map(ann=>{
