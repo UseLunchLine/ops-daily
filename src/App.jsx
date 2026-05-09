@@ -518,10 +518,7 @@ function AlertsBtn(){
   const toggle=async()=>{
     if(status==="granted"){
       // Can't programmatically disable - show instructions
-      alert("To turn off notifications:
-Chrome: Click the lock icon in the address bar → Notifications → Block
-Edge: Same as Chrome
-iOS: Settings → Notifications → Ops Daily → Off")
+      alert("To turn off notifications:\n\nChrome/Edge: Click the lock icon in the address bar → Notifications → Block\n\niOS: Settings app → Notifications → Ops Daily → Off")
       return
     }
     const result=await requestPushPermission()
