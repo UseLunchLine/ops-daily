@@ -637,7 +637,10 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
-      if(p.eventType==='INSERT'&&canSeeAnn(p.new,user?.role))setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
+      if(p.eventType==='INSERT'){
+        setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
+        showLocalNotification('Ops Daily — 📢 New Announcement', p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))
+      }
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old.id))
     }).subscribe()
@@ -2140,7 +2143,11 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old.id))
     }).subscribe()
     const rt2=supabase.channel(uid2).on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
-      if(p.eventType==='INSERT')setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+      if(p.eventType==='INSERT'){
+        setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+        // Show in-app notification for new announcements
+        showLocalNotification('Ops Daily — 📢 New Announcement', p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))
+      }
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old.id))
     }).subscribe()
@@ -2214,6 +2221,9 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     setAnnForm({title:"",body:"",type:"general",expires_at:"",due_date:"",audience:"all"})
     setAnnModal(false)
     toast.show("Announcement posted!")
+    // Send push notification to relevant users
+    const audLabel=na.audience==="kitchen_manager"?"Kitchen Managers":na.audience==="admin_team"?"Admin Team":"Everyone"
+    sendPushNotification("📢 New Announcement → "+audLabel, na.title+(na.body?" | "+na.body.slice(0,80):""), user.id, na.type==="urgent")
   }
 
   const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
@@ -2728,6 +2738,7 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
   const [readIds,setReadIds]=useState(()=>{try{return JSON.parse(localStorage.getItem("readAnns")||"[]")}catch{return[]}})
   const [acks,setAcks]=useState([])
   const [showAcks,setShowAcks]=useState(null)
+  const [showAllPending,setShowAllPending]=useState(null)
 
   useEffect(()=>{
     supabase.from("announcement_acknowledgments").select("*").then(({data})=>{if(data)setAcks(data)})
@@ -2797,8 +2808,8 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
                         </div>
                         <div>
                           <div style={{fontSize:10,fontWeight:700,color:"#DC2626",marginBottom:4,textTransform:"uppercase",letterSpacing:".05em"}}>⏳ Pending</div>
-                          {notAcked.slice(0,8).map(s=><div key={s.id} style={{fontSize:11,color:C.text,padding:"3px 0",display:"flex",alignItems:"center",gap:4}}><span style={{color:"#DC2626"}}>○</span>{s.name.split(" ")[0]}</div>)}
-                          {notAcked.length>8&&<div style={{fontSize:11,color:C.textLight}}>+{notAcked.length-8} more</div>}
+                          {notAcked.slice(0,showAllPending===ann.id?999:8).map(s=><div key={s.id} style={{fontSize:11,color:C.text,padding:"3px 0",display:"flex",alignItems:"center",gap:4}}><span style={{color:"#DC2626"}}>○</span>{s.name}</div>)}
+                          {notAcked.length>8&&<button onClick={()=>setShowAllPending(showAllPending===ann.id?null:ann.id)} style={{fontSize:11,color:"#2563EB",fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:"2px 0",fontFamily:"inherit"}}>{showAllPending===ann.id?"Show less":"+"+(notAcked.length-8)+" more"}</button>}
                         </div>
                       </div>
                     )}
