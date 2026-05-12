@@ -266,7 +266,7 @@ const ROLE_PAGE_MAP={
   director:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],
   supervisor:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],
   chef:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","checklist"],
-  kitchen_manager:["kitchen","directory"],
+  kitchen_manager:["kitchen","checklist","directory"],
 }
 const ROLE_DEFAULT={admin:"dashboard",director:"dashboard",supervisor:"dashboard",chef:"dashboard",kitchen_manager:"kitchen"}
 
@@ -342,17 +342,17 @@ export default function App(){
       supabase.channel('rt-recaps').on('postgres_changes',{event:'*',schema:'public',table:'recaps'},p=>{
         if(p.eventType==='INSERT')setRecaps(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setRecaps(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-        if(p.eventType==='DELETE')setRecaps(prev=>prev.filter(x=>x.id!==p.old.id))
+        if(p.eventType==='DELETE')setRecaps(prev=>prev.filter(x=>x.id!==p.old?.id))
       }).subscribe(),
       supabase.channel('rt-calloffs').on('postgres_changes',{event:'*',schema:'public',table:'calloffs'},p=>{
         if(p.eventType==='INSERT')setCalloffs(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setCalloffs(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-        if(p.eventType==='DELETE')setCalloffs(prev=>prev.filter(x=>x.id!==p.old.id))
+        if(p.eventType==='DELETE')setCalloffs(prev=>prev.filter(x=>x.id!==p.old?.id))
       }).subscribe(),
       supabase.channel('rt-events').on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
         if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-        if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old.id))
+        if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old?.id))
       }).subscribe(),
     ]
     return()=>channels.forEach(ch=>ch.unsubscribe())
@@ -658,12 +658,9 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
-      if(p.eventType==='INSERT'){
-        setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
-        showLocalNotification('Ops Daily — 📢 New Announcement', p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))
-      }
+      if(p.eventType==='INSERT'){setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5));showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))}
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-      if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old.id))
+      if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
     return()=>rt.unsubscribe()
   },[])
@@ -2155,7 +2152,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       if(setEvents){
         if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-        if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old.id))
+        if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old?.id))
       }
     }).subscribe()
     const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
@@ -2166,7 +2163,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         // - KM: only notify about issues at their own school (not from themselves)
         const isMySchool=userSchoolIds.includes(p.new.school_id)
         const isMyIssue=p.new.created_by===user?.id
-        const shouldNotify=canManageAll?!isMyIssue:(isMySchool&&!isMyIssue)
+        const shouldNotify=!isMyIssue&&(canManageAll||isMySchool)
         if(shouldNotify){
           const sch=schools.find(s=>s.id===p.new.school_id)
           const kit=KIT[p.new.type]?.label||p.new.type
@@ -2179,13 +2176,9 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old.id))
     }).subscribe()
     const rt2=supabase.channel(uid2).on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
-      if(p.eventType==='INSERT'){
-        setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
-        // Show in-app notification for new announcements
-        showLocalNotification('Ops Daily — 📢 New Announcement', p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))
-      }
+      if(p.eventType==='INSERT'){setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)]);showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))}
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-      if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old.id))
+      if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
     return()=>{rt1.unsubscribe();rt2.unsubscribe()}
   },[])
@@ -2592,7 +2585,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
   const [messages,setMessages]=useState([])
   const [loading,setLoading]=useState(true)
   const [newMsgModal,setNewMsgModal]=useState(false)
-  const [newMsgForm,setNewMsgForm]=useState({to_school_id:"",body:""})
+  const [newMsgForm,setNewMsgForm]=useState({to_school_id:"",to_user_id:"",body:""})
   const [replyText,setReplyText]=useState({})
   const [showReply,setShowReply]=useState({})
   const canSend=true // All roles can send messages
@@ -2622,7 +2615,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
         }
       }
       if(p.eventType==='UPDATE')setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-      if(p.eventType==='DELETE')setMessages(prev=>prev.filter(x=>x.id!==p.old.id))
+      if(p.eventType==='DELETE')setMessages(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
     return()=>rt.unsubscribe()
   },[])
@@ -2633,10 +2626,10 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     .map(root=>({root,replies:messages.filter(m=>m.reply_to===root.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))}))
     .filter(t=>{
       if(isKM){
-        // KM only sees threads they sent or received from admin
+        // KM only sees their own sent messages and replies to them
         return t.root.from_user_id===user.id||
                t.replies.some(r=>r.from_user_id===user.id)||
-               (!t.root.to_school_id&&t.root.from_role==="kitchen_manager"&&mySchoolIds.length>0)
+               (!t.root.to_user_id&&!t.root.to_school_id&&t.root.from_role!=="kitchen_manager")
       }
       // Admin team sees ALL messages
       return true
@@ -2651,12 +2644,13 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     if(!newMsgForm.body.trim())return
     // KM always sends to admin team (no school target = broadcast to admin)
     const toSchool=isKM?null:(newMsgForm.to_school_id||null)
-    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,from_role:user.role,to_school_id:toSchool,to_user_id:null,body:newMsgForm.body.trim(),created_at:new Date().toISOString(),read:false,acknowledged:false,reply_to:null}
+    const toUser=isKM?(newMsgForm.to_user_id||null):null
+    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,from_role:user.role,to_school_id:toSchool,to_user_id:toUser,body:newMsgForm.body.trim(),created_at:new Date().toISOString(),read:false,acknowledged:false,reply_to:null}
     await supabase.from("kitchen_messages").insert(nm)
     setMessages(p=>[...p,nm])
-    setNewMsgForm({to_school_id:"",body:""})
+    setNewMsgForm({to_school_id:"",to_user_id:"",body:""})
     setNewMsgModal(false)
-    toast.show("Message sent to Admin Team!")
+    toast.show("Message sent!")
   }
 
   const sendReply=async(rootId,rootSchoolId)=>{
@@ -2706,9 +2700,17 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
             </div>
             <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
               {isKM?(
-                <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"10px 14px",fontSize:13,color:"#1D4ED8",fontWeight:600}}>📨 This message will be sent to the Admin Team</div>
+                <div>
+                  <L>Send To (Admin Team)</L>
+                  <select value={newMsgForm.to_user_id||""} onChange={e=>setNewMsgForm(f=>({...f,to_user_id:e.target.value}))} style={{...inp,background:"#fff"}}>
+                    <option value="">All Admin Team</option>
+                    {supaUsers.filter(u=>["admin","director","supervisor","chef"].includes(u.role)&&u.is_active!==false).map(u=>(
+                      <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                    ))}
+                  </select>
+                </div>
               ):(
-                <div><L>Send To</L><SG schools={schools} value={newMsgForm.to_school_id} onChange={e=>setNewMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
+                <div><L>Send To Kitchen</L><SG schools={schools} value={newMsgForm.to_school_id} onChange={e=>setNewMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
               )}
               <div><L>Message *</L><textarea value={newMsgForm.body} onChange={e=>setNewMsgForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Type your message..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
               <div style={{display:"flex",gap:10}}><Btn onClick={()=>setNewMsgModal(false)} variant="outline">Cancel</Btn><Btn onClick={sendNew} disabled={!newMsgForm.body.trim()}>Send</Btn></div>
