@@ -2191,11 +2191,19 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const submitAnn=async()=>{
     if(!annForm.title.trim())return
     const na={id:uid(),...annForm,title:annForm.title.trim(),created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString()}
-    await supabase.from("announcements").insert(na)
+    console.log('Saving announcement:', na)
+    const{error}=await supabase.from("announcements").insert(na)
+    if(error){
+      console.error('Announcement save error:', error)
+      toast.show("Failed to save: "+error.message,"error")
+      return
+    }
+    console.log('Announcement saved successfully')
     setAnnouncements(p=>[na,...p])
     setAnnForm({title:"",body:"",type:"general",expires_at:"",due_date:"",audience:"all"})
     setAnnModal(false)
     toast.show("Announcement posted!")
+  }
   }
 
   const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
