@@ -614,10 +614,10 @@ function AlertsBtn({userId}){
   },[])
   const handleClick=async()=>{
     if(status==="unsupported"){alert("Your browser does not support push notifications.");return}
-    if(status==="denied"){alert("Notifications are blocked.
+    if(status==="denied"){alert("Notifications are blocked.\n\nChrome/Edge: Click the lock icon in the address bar → Notifications → Allow\niOS: Settings app → Notifications → Ops Daily → Allow");return}
 
-Chrome/Edge: Click the lock icon → Notifications → Allow
-iOS: Settings → Notifications → Ops Daily → Allow");return}
+
+
     const result=await requestPushPermission(userId)
     if(result){setStatus("granted");setSubscribed(true)}
   }
