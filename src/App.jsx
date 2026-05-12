@@ -601,21 +601,34 @@ function InAppNotifications(){
 }
 
 function AlertsBtn({userId}){
-  const [status,setStatus]=useState(()=>typeof Notification!=="undefined"?Notification.permission:"default")
-  const toggle=async()=>{
-    if(status==="granted"){
-      alert("To turn off notifications:\n\nChrome/Edge: Click the lock icon → Notifications → Block\n\niOS: Settings app → Notifications → Ops Daily → Off")
-      return
+  const [status,setStatus]=useState('loading')
+  const [subscribed,setSubscribed]=useState(false)
+  useEffect(()=>{
+    if(typeof Notification==="undefined"){setStatus("unsupported");return}
+    setStatus(Notification.permission)
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js').then(reg=>{
+        reg.pushManager.getSubscription().then(sub=>setSubscribed(!!sub)).catch(()=>{})
+      }).catch(()=>{})
     }
+  },[])
+  const handleClick=async()=>{
+    if(status==="unsupported"){alert("Your browser does not support push notifications.");return}
+    if(status==="denied"){alert("Notifications are blocked.
+
+Chrome/Edge: Click the lock icon → Notifications → Allow
+iOS: Settings → Notifications → Ops Daily → Allow");return}
     const result=await requestPushPermission(userId)
-    if(result) setStatus("granted")
+    if(result){setStatus("granted");setSubscribed(true)}
   }
+  const isOn=subscribed&&status==="granted"
   return(
-    <button onClick={toggle} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:R.md,border:"1px solid "+(status==="granted"?"#16A34A":status==="denied"?"#DC2626":"#E2E8F0"),background:status==="granted"?"#F0FDF4":status==="denied"?"#FEF2F2":"#fff",color:status==="granted"?"#15803D":status==="denied"?"#DC2626":C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>
-      {status==="granted"?"🔔 Alerts On":status==="denied"?"🔕 Blocked":"🔔 Enable Alerts"}
+    <button onClick={handleClick} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:R.md,border:"1px solid "+(isOn?"#16A34A":status==="denied"?"#DC2626":"#E2E8F0"),background:isOn?"#F0FDF4":status==="denied"?"#FEF2F2":"#fff",color:isOn?"#15803D":status==="denied"?"#DC2626":C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>
+      {isOn?"🔔 Alerts On":status==="denied"?"🔕 Blocked":status==="loading"?"..":"🔔 Enable Alerts"}
     </button>
   )
 }
+
 
 function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
   const [announcements,setAnnouncements]=useState([])
@@ -2054,22 +2067,25 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   useEffect(()=>{
     loadIssues();loadAnnouncements()
     // Realtime for issues
-    const rt1=supabase.channel('kitchen-issues-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
+  useEffect(()=>{
+    loadIssues();loadAnnouncements()
+    const uid1='kitchen-issues-'+Date.now()
+    const uid2='kitchen-anns-'+Date.now()
+    const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
       if(p.eventType==='INSERT'){
         setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
-        // Notify others when a new issue comes in
         if(p.new.created_by!==user?.id){
           const sch=schools.find(s=>s.id===p.new.school_id)
           const kit=KIT[p.new.type]?.label||p.new.type
           const prefix=p.new.priority==='urgent'?'🔴 URGENT':'📋 New Issue'
-          showLocalNotification('Ops Daily — '+prefix+': '+(sch?.name||'Unknown School'), kit+' — '+p.new.title+' | Reported by '+p.new.created_by_name)
+          showLocalNotification('Ops Daily — '+prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | Reported by '+p.new.created_by_name)
+          sendPushNotification(prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | '+p.new.created_by_name,p.new.created_by,p.new.priority==='urgent')
         }
       }
       if(p.eventType==='UPDATE')setIssues(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old.id))
     }).subscribe()
-    // Realtime for announcements
-    const rt2=supabase.channel('announcements-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
+    const rt2=supabase.channel(uid2).on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT')setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old.id))
@@ -2465,7 +2481,8 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
       setLoading(false)
     })
     // Realtime for messages
-    const rt=supabase.channel('km-messages-rt').on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
+    const rtId='km-msgs-'+Date.now()
+    const rt=supabase.channel(rtId).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
       if(p.eventType==='INSERT'){
         setMessages(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
         // Only notify if message is FROM someone else AND is directed to my school or all kitchens
