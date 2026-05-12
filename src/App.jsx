@@ -54,51 +54,101 @@ async function logAudit(action,entity,entityId,userId,userName,userRole,schoolId
   }catch(e){console.error('Audit log error:',e)}
 }
 
-async function requestPushPermission(){
-  // Register service worker for PWA notifications
-  if("serviceWorker" in navigator){try{await navigator.serviceWorker.register("/sw.js")}catch(e){console.log("SW:",e)}}
-  // iOS Safari needs PWA mode
+const VAPID_KEY='BGQze-S_eahN7g5QftHDNwW5HbgDsgpeLFyFJV008rBl5S5x_LQPN5qkn4re_oWT8US7llrGx9CS5zfsuWLXpTw'
+
+function urlBase64ToUint8Array(b){
+  const pad='='.repeat((4-b.length%4)%4)
+  const base64=(b+pad).replace(/-/g,'+').replace(/_/g,'/')
+  const raw=window.atob(base64)
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))
+}
+
+async function requestPushPermission(userId){
   const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)
-  const isInStandaloneMode=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone
-  if(isIOS&&!isInStandaloneMode){
-    alert('To get notifications on iPhone/iPad:\n\n1. Tap the Share button (box with arrow)\n2. Tap "Add to Home Screen"\n3. Open Ops Daily from your home screen\n4. Then tap Enable Alerts again')
+  const isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone
+  if(isIOS&&!isStandalone){
+    alert('To get notifications on iPhone:\n\n1. Open this site in Safari\n2. Tap the Share button at the bottom\n3. Tap "Add to Home Screen"\n4. Open Ops Daily from your home screen\n5. Tap Enable Alerts again')
     return false
   }
-  if(!('Notification' in window)){
-    alert('Your browser does not support notifications. Try Chrome or Edge.')
-    return false
-  }
-  if(Notification.permission==='granted') return true
+  if(!('Notification' in window)){alert('Use Chrome or Edge for notifications.');return false}
   if(Notification.permission==='denied'){
-    alert('Notifications are blocked.\n\nTo fix:\nChrome: Click the lock icon → Notifications → Allow\nEdge: Click the lock icon → Notifications → Allow')
+    alert('Notifications blocked.\n\nChrome/Edge: Click the lock icon in the address bar → Notifications → Allow')
     return false
   }
   const perm=await Notification.requestPermission()
-  if(perm==='granted'){
-    new Notification('Ops Daily - Notifications Enabled',{
-      body:'You will now receive alerts for urgent kitchen issues, new messages, and announcements.',
-      icon:'/logo.png'
+  if(perm!=='granted') return false
+  try{
+    if(!('serviceWorker' in navigator)) return true
+    const reg=await navigator.serviceWorker.register('/sw.js',{scope:'/'})
+    await navigator.serviceWorker.ready
+    // Check existing subscription
+    let sub=await reg.pushManager.getSubscription()
+    if(!sub){
+      // Create new subscription
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:urlBase64ToUint8Array(VAPID_KEY)
+      })
+    }
+    // Save to Supabase
+    if(userId&&sub){
+      const{error}=await supabase.from('push_subscriptions').upsert({
+        id:userId,
+        user_id:userId,
+        subscription_data:JSON.stringify(sub.toJSON()),
+        updated_at:new Date().toISOString()
+      },{onConflict:'user_id'})
+      if(error) console.error('Sub save error:',error)
+      else console.log('Push subscription saved for user',userId)
+    }
+    // Show test notification
+    reg.showNotification('Ops Daily — Alerts Enabled',{
+      body:'You will now receive push notifications for urgent issues and messages.',
+      icon:'/logo.png',
+      badge:'/logo.png'
     })
     return true
+  }catch(e){
+    console.error('Push subscribe error:',e)
+    alert('Push setup failed: '+e.message+'\n\nIn-app alerts will still work.')
+    return false
   }
-  return false
 }
 
+
+async function sendPushNotification(title, body, fromUserId, urgent=false){
+  try{
+    await fetch('/.netlify/functions/push',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title,body,from_user_id:fromUserId,urgent})
+    })
+  }catch(e){console.error('Push send error:',e)}
+}
+
+// Global notification queue for in-app alerts
+let _notifQueue = [];
+let _notifSetter = null;
+function registerNotifSetter(fn){ _notifSetter = fn; }
+
 function showLocalNotification(title,body){
-  if(!('Notification' in window))return
-  if(Notification.permission==='granted'){
-    const n=new Notification(title,{
-      body,
-      icon:'/logo.png',
-      badge:'/logo.png',
-      requireInteraction:true,
-      tag:title
-    })
-    n.onclick=()=>{window.focus();n.close()}
-  } else if(Notification.permission!=='denied'){
-    Notification.requestPermission().then(p=>{
-      if(p==='granted') showLocalNotification(title,body)
-    })
+  // Try browser notification first
+  if('Notification' in window && Notification.permission==='granted'){
+    try{
+      navigator.serviceWorker.ready.then(reg=>{
+        reg.showNotification(title,{body,icon:'/logo.png',badge:'/logo.png',requireInteraction:false,tag:title})
+      }).catch(()=>{
+        new Notification(title,{body,icon:'/logo.png',requireInteraction:false,tag:title})
+      })
+    }catch(e){
+      new Notification(title,{body,icon:'/logo.png'})
+    }
+  }
+  // ALWAYS show in-app notification banner as fallback
+  if(_notifSetter){
+    const id=uid()
+    _notifSetter(p=>[{id,title,body,ts:Date.now()},...p].slice(0,5))
+    setTimeout(()=>_notifSetter(p=>p.filter(n=>n.id!==id)),8000)
   }
 }
 async function callAI(messages,systemPrompt=""){
@@ -291,7 +341,7 @@ export default function App(){
     }
     loadData()
   },[])
-  const [page,setPage]=useState(()=>sessionStorage.getItem('ops_page')||(user?.role=="kitchen_manager"?"kitchen":"dashboard"))
+  const [page,setPage]=useState(()=>sessionStorage.getItem('ops_page')||"dashboard")
   const [ctx,setCtx]=useState(null)
   const [sideOpen,setSideOpen]=useState(false)
   const [menuOpen,setMenuOpen]=useState(false)
@@ -356,6 +406,7 @@ export default function App(){
       <div style={{background:C.bg,minHeight:"100vh",fontFamily:"system-ui,sans-serif"}}>
         <style>{"@keyframes slideIn{from{transform:translateX(-100%);opacity:0}to{transform:translateX(0);opacity:1}}@keyframes fadeIn{from{opacity:0}to{opacity:1}}"}</style>
         <Toast msg={toast.msg} type={toast.type}/>
+        <InAppNotifications/>
         <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:30,boxShadow:SH.sm}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <button onClick={()=>setMenuOpen(v=>!v)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,color:C.text,cursor:"pointer",display:"flex",padding:8}}>
@@ -501,6 +552,7 @@ function AnnouncementBanner({announcements}){
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:800,fontSize:13,color:at.color,marginBottom:ann.body?2:0}}>{ann.title}</div>
               {ann.body&&<div style={{fontSize:12,color:at.color,opacity:.85,lineHeight:1.5}}>{ann.body}</div>}
+              {ann.due_date&&<div style={{fontSize:11,fontWeight:700,color:at.color,marginTop:4,background:"rgba(0,0,0,.06)",padding:"2px 8px",borderRadius:R.full,display:"inline-block"}}>📅 Due: {fd(ann.due_date)}</div>}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
               <span style={{fontSize:10,color:at.color,opacity:.5,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
@@ -513,15 +565,34 @@ function AnnouncementBanner({announcements}){
   )
 }
 
-function AlertsBtn(){
+function InAppNotifications(){
+  const [notifs,setNotifs]=useState([])
+  useEffect(()=>{registerNotifSetter(setNotifs)},[])
+  if(!notifs.length)return null
+  return(
+    <div style={{position:"fixed",top:64,right:16,zIndex:9999,display:"flex",flexDirection:"column",gap:8,maxWidth:340}}>
+      {notifs.map(n=>(
+        <div key={n.id} style={{background:"#1E293B",color:"#fff",borderRadius:R.lg,padding:"12px 16px",boxShadow:"0 8px 24px rgba(0,0,0,.3)",display:"flex",gap:10,alignItems:"flex-start",animation:"slideIn .3s ease"}}>
+          <span style={{fontSize:18,flexShrink:0}}>🔔</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{n.title}</div>
+            <div style={{fontSize:12,opacity:.8,lineHeight:1.4}}>{n.body}</div>
+          </div>
+          <button onClick={()=>setNotifs(p=>p.filter(x=>x.id!==n.id))} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:16,padding:0,flexShrink:0,lineHeight:1}}>✕</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AlertsBtn({userId}){
   const [status,setStatus]=useState(()=>typeof Notification!=="undefined"?Notification.permission:"default")
   const toggle=async()=>{
     if(status==="granted"){
-      // Can't programmatically disable - show instructions
-      alert("To turn off notifications:\n\nChrome/Edge: Click the lock icon in the address bar → Notifications → Block\n\niOS: Settings app → Notifications → Ops Daily → Off")
+      alert("To turn off notifications:\n\nChrome/Edge: Click the lock icon → Notifications → Block\n\niOS: Settings app → Notifications → Ops Daily → Off")
       return
     }
-    const result=await requestPushPermission()
+    const result=await requestPushPermission(userId)
     if(result) setStatus("granted")
   }
   return(
@@ -590,7 +661,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
 
   return(
     <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><AlertsBtn/><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
+      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><AlertsBtn userId={user?.id}/><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
       <AnnouncementBanner announcements={announcements}/>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
@@ -1682,7 +1753,7 @@ const ET=Object.fromEntries(EVENT_TYPES.map(e=>[e.id,e]))
 function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
   const [view,setView]=useState("calendar")
   const [modal,setModal]=useState(null)
-  const [form,setForm]=useState({title:"",date:"",time:"",end_time:"",type:"meeting",location:"",school_ids:[],description:"",created_by:""})
+  const [form,setForm]=useState({title:"",date:"",time:"",end_time:"",type:"meeting",location:"",school_ids:[],description:"",created_by:"",audience:"all"})
   const [selDate,setSelDate]=useState(null)
   const [curMonth,setCurMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()}})
   const [mobile,setMobile]=useState(window.innerWidth<768)
@@ -1698,7 +1769,7 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
   const save=async()=>{
     if(!form.title.trim()||!form.date){return}
     if(modal==="add"){
-      const ne={id:uid(),...form,title:form.title.trim(),created_by:user.id,created_at:new Date().toISOString()}
+      const ne={id:uid(),...form,title:form.title.trim(),created_by:user.id,created_at:new Date().toISOString(),audience:form.audience||"all"}
       setEvents(p=>[...p,ne].sort((a,b)=>a.date.localeCompare(b.date)))
       await supabase.from("events").insert(ne)
       toast.show("Event created!")
@@ -1729,9 +1800,16 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
   const monthStr=new Date(y,m,1).toLocaleDateString("en-US",{month:"long",year:"numeric"})
   const pad=n=>String(n).padStart(2,"0")
   const dateStr=(y,m,d)=>y+"-"+pad(m+1)+"-"+pad(d)
-  const eventsOnDay=d=>events.filter(e=>e.date===dateStr(y,m,d))
-  const upcomingEvents=events.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date))
-  const pastEvents=events.filter(e=>e.date<TODAY).sort((a,b)=>b.date.localeCompare(a.date))
+  const eventsOnDay=d=>events.filter(e=>e.date===dateStr(y,m,d)&&canSeeEvent(e))
+  const canSeeEvent=(e)=>{
+    if(!e.audience||e.audience==="all") return true
+    if(e.audience==="admin") return ["admin"].includes(user.role)
+    if(e.audience==="staff") return ["admin","director","supervisor","chef"].includes(user.role)
+    return e.audience===user.role||user.role==="admin"
+  }
+  const myEvents=events.filter(canSeeEvent)
+  const upcomingEvents=myEvents.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date))
+  const pastEvents=myEvents.filter(e=>e.date<TODAY).sort((a,b)=>b.date.localeCompare(a.date))
 
   const EventCard=({e,compact=false})=>{
     const et=ET[e.type]||ET.other
@@ -1941,7 +2019,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const [issues,setIssues]=useState([])
   const [announcements,setAnnouncements]=useState([])
   const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
-  const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",expires_at:""})
+  const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",expires_at:"",due_date:""})
   const [annModal,setAnnModal]=useState(false)
   const [loading,setLoading]=useState(false)
   const [mobile,setMobile]=useState(window.innerWidth<768)
@@ -1998,17 +2076,10 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     // Fire notification to all staff for urgent issues
     const schoolName=schools.find(s=>s.id===schoolId)?.name||"Unknown School"
     const kitType=KIT[ni.type]?.label||ni.type
-    if(ni.priority==="urgent"){
-      showLocalNotification(
-        "Ops Daily — 🔴 URGENT: "+schoolName,
-        kitType+" — "+ni.title+(ni.description?" | "+ni.description.slice(0,80):"")+" | Reported by "+user.name
-      )
-    } else {
-      showLocalNotification(
-        "Ops Daily — New Kitchen Issue: "+schoolName,
-        kitType+" — "+ni.title+" | Reported by "+user.name
-      )
-    }
+    const notifTitle=(ni.priority==="urgent"?"🔴 URGENT: ":"New Issue: ")+schoolName
+    const notifBody=kitType+" — "+ni.title+(ni.description?" | "+ni.description.slice(0,80):"")+" | "+user.name
+    showLocalNotification("Ops Daily — "+notifTitle, notifBody)
+    sendPushNotification(notifTitle, notifBody, user.id, ni.priority==="urgent")
     setLoading(false)
   }
 
@@ -2029,7 +2100,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     const na={id:uid(),...annForm,title:annForm.title.trim(),created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString()}
     await supabase.from("announcements").insert(na)
     setAnnouncements(p=>[na,...p])
-    setAnnForm({title:"",body:"",type:"general",expires_at:""})
+    setAnnForm({title:"",body:"",type:"general",expires_at:"",due_date:""})
     setAnnModal(false)
     toast.show("Announcement posted!")
   }
@@ -2168,7 +2239,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
           
           {events.filter(e=>!e.school_ids?.length||e.school_ids.includes(mySchool?.id)).length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📅</div><div style={{fontWeight:700}}>No upcoming events.</div></Box>
-          ):events.filter(e=>!e.school_ids?.length||e.school_ids.includes(mySchool?.id)).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
+          ):events.filter(e=>(!e.school_ids?.length||e.school_ids.includes(mySchool?.id))&&(!e.audience||e.audience==="all"||e.audience==="kitchen_manager")).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
             const et=ET[e.type]||ET.other
             return(
               <Box key={e.id} style={{padding:16,borderLeft:"4px solid "+et.color}}>
@@ -2208,7 +2279,10 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
                 </div>
               </div>
               <div><L>Message</L><textarea value={annForm.body} onChange={e=>setAnnForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Write your announcement..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
-              <div><L>Expires On (optional)</L><input type="date" value={annForm.expires_at} onChange={e=>setAnnForm(f=>({...f,expires_at:e.target.value}))} style={{...inp}} min={TODAY}/><div style={{fontSize:11,color:C.textMuted,marginTop:4}}>Leave blank to show indefinitely. Set a date to auto-hide after that day.</div></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <div><L>Due Date (optional)</L><input type="date" value={annForm.due_date} onChange={e=>setAnnForm(f=>({...f,due_date:e.target.value}))} style={{...inp}} min={TODAY}/><div style={{fontSize:11,color:C.textMuted,marginTop:4}}>Deadline for action items.</div></div>
+                <div><L>Expires On (optional)</L><input type="date" value={annForm.expires_at} onChange={e=>setAnnForm(f=>({...f,expires_at:e.target.value}))} style={{...inp}} min={TODAY}/><div style={{fontSize:11,color:C.textMuted,marginTop:4}}>Auto-hide after this date.</div></div>
+              </div>
               <div style={{display:"flex",gap:10}}><Btn onClick={()=>setAnnModal(false)} variant="outline">Cancel</Btn><Btn onClick={submitAnn} disabled={!annForm.title.trim()}>Post</Btn></div>
             </div>
           </div>
@@ -2359,7 +2433,10 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
         if(p.new.from_user_id!==user?.id&&isForMe){
           const sch=schools.find(s=>s.id===p.new.to_school_id)
           const dest=sch?sch.name:'All Kitchens'
-          showLocalNotification('Ops Daily — New Message for '+dest, 'From '+p.new.from_name+': '+p.new.body.slice(0,100))
+          const msgTitle='New Message for '+dest
+          const msgBody='From '+p.new.from_name+': '+p.new.body.slice(0,100)
+          showLocalNotification('Ops Daily — '+msgTitle, msgBody)
+          sendPushNotification(msgTitle, msgBody, p.new.from_user_id, false)
         }
       }
       if(p.eventType==='UPDATE')setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
@@ -2568,7 +2645,8 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
                   {ann.expires_at&&<span style={{fontSize:11,color:C.textLight}}>· expires {fd(ann.expires_at)}</span>}
                 </div>
                 <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:6}}>{ann.title}</div>
-                {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7,marginBottom:10}}>{ann.body}</div>}
+                {ann.body&&<div style={{fontSize:13,color:C.textMuted,lineHeight:1.7,marginBottom:6}}>{ann.body}</div>}
+                {ann.due_date&&<div style={{fontSize:12,fontWeight:700,color:"#D97706",background:"#FFFBEB",border:"1px solid #FDE68A",padding:"3px 10px",borderRadius:R.full,display:"inline-block",marginBottom:6}}>📅 Due: {fd(ann.due_date)}</div>}
                 {/* Acknowledgment tracking for managers */}
                 {canManageAll&&annAcks.length>0&&(
                   <div style={{marginTop:8}}>
@@ -2892,15 +2970,26 @@ function AuditPage({user,schools,isAdmin}){
   const [logs,setLogs]=useState([])
   const [loading,setLoading]=useState(true)
   const [filter,setFilter]=useState("")
+  const [typeFilter,setTypeFilter]=useState("")
 
   useEffect(()=>{
-    supabase.from("audit_logs").select("*").order("created_at",{ascending:false}).limit(200).then(({data})=>{
-      if(data)setLogs(data)
+    supabase.from("audit_logs").select("*").order("created_at",{ascending:false}).limit(500).then(({data,error})=>{
+      if(error) console.error("Audit log error:",error)
+      if(data) setLogs(data)
       setLoading(false)
     })
+    // Realtime
+    const rt=supabase.channel('audit-rt').on('postgres_changes',{event:'INSERT',schema:'public',table:'audit_logs'},p=>{
+      setLogs(prev=>[p.new,...prev].slice(0,500))
+    }).subscribe()
+    return()=>rt.unsubscribe()
   },[])
 
-  const filtered=filter?logs.filter(l=>l.action?.includes(filter)||l.user_name?.toLowerCase().includes(filter.toLowerCase())||l.entity?.includes(filter)):logs
+  const filtered=logs.filter(l=>{
+    const matchText=!filter||l.action?.includes(filter)||l.user_name?.toLowerCase().includes(filter.toLowerCase())||l.entity?.includes(filter)||schools.find(s=>s.id===l.school_id)?.name.toLowerCase().includes(filter.toLowerCase())
+    const matchType=!typeFilter||l.action===typeFilter
+    return matchText&&matchType
+  })
 
   const actionColors={submit_recap:"#2563EB",resolve_issue:"#16A34A",log_calloff:"#D97706",submit_checklist:"#7C3AED",delete:"#DC2626",login:"#0891B2",update:"#0F766E"}
   const sById=id=>schools.find(s=>s.id===id)
@@ -2908,9 +2997,20 @@ function AuditPage({user,schools,isAdmin}){
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Audit Log" subtitle="Full history of all actions taken in Ops Daily"/>
-      <Box style={{marginBottom:16,padding:"12px 16px"}}>
-        <Inp value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter by action, user, or entity..."/>
-      </Box>
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <Box style={{flex:1,padding:"12px 16px",minWidth:200}}>
+          <Inp value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Search by user, school, action..."/>
+        </Box>
+        <Box style={{padding:"12px 16px"}}>
+          <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={{...inp,minWidth:160}}>
+            <option value="">All Actions</option>
+            <option value="submit_recap">Submit Recap</option>
+            <option value="resolve_issue">Resolve Issue</option>
+            <option value="log_calloff">Log Call-Off</option>
+            <option value="submit_checklist">Submit Checklist</option>
+          </select>
+        </Box>
+      </div>
       {loading?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>Loading...</Box>
       :filtered.length===0?<Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No audit logs found.</Box>
       :<div style={{display:"flex",flexDirection:"column",gap:6}}>
