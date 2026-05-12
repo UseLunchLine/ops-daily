@@ -2401,7 +2401,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
                 <div><L>Due Date (optional)</L><input type="date" value={annForm.due_date} onChange={e=>setAnnForm(f=>({...f,due_date:e.target.value}))} style={{...inp}} min={TODAY}/><div style={{fontSize:11,color:C.textMuted,marginTop:4}}>Deadline for action items.</div></div>
                 <div><L>Expires On (optional)</L><input type="date" value={annForm.expires_at} onChange={e=>setAnnForm(f=>({...f,expires_at:e.target.value}))} style={{...inp}} min={TODAY}/><div style={{fontSize:11,color:C.textMuted,marginTop:4}}>Auto-hide after this date.</div></div>
               </div>
-              <div style={{display:"flex",gap:10}}><Btn onClick={()=>setAnnModal(false)} variant="outline">Cancel</Btn><Btn onClick={submitAnn} disabled={!annForm.title.trim()}>Post</Btn></div>
+              <div style={{display:"flex",gap:10}}><Btn onClick={()=>setAnnModal(false)} variant="outline">Cancel</Btn><Btn onClick={()=>{console.log('Post clicked, title:',annForm.title);submitAnn()}}>Post</Btn></div>
             </div>
           </div>
         </div>
