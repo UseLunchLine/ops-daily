@@ -2190,7 +2190,19 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   const submitAnn=async()=>{
     if(!annForm.title.trim())return
-    const na={id:uid(),...annForm,title:annForm.title.trim(),created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString()}
+    const na={
+      id:uid(),
+      title:annForm.title.trim(),
+      body:annForm.body,
+      type:annForm.type,
+      audience:annForm.audience||"all",
+      due_date:annForm.due_date||null,
+      expires_at:annForm.expires_at||null,
+      school_ids:[],
+      created_by:user.id,
+      created_by_name:user.name||user.email,
+      created_at:new Date().toISOString()
+    }
     console.log('Saving announcement:', na)
     const{error}=await supabase.from("announcements").insert(na)
     if(error){
@@ -2198,7 +2210,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       toast.show("Failed to save: "+error.message,"error")
       return
     }
-    console.log('Announcement saved successfully')
     setAnnouncements(p=>[na,...p])
     setAnnForm({title:"",body:"",type:"general",expires_at:"",due_date:"",audience:"all"})
     setAnnModal(false)
