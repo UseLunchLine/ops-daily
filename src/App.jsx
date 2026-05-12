@@ -545,11 +545,12 @@ function Login(){
 
 function canSeeAnn(ann, userRole){
   if(!ann) return false
-  const aud = ann.audience || "all"
-  if(!aud || aud === "all") return true
+  const aud = ann.audience
+  // No audience set = show to everyone
+  if(!aud || aud === "all" || aud === "") return true
   if(aud === "admin_team") return ["admin","director","supervisor","chef"].includes(userRole)
   if(aud === "kitchen_manager") return userRole === "kitchen_manager"
-  return true
+  return true // Unknown audience = show to everyone
 }
 
 function AnnouncementBanner({announcements,userRole}){
@@ -634,7 +635,7 @@ function AlertsBtn({userId}){
 function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
   const [announcements,setAnnouncements]=useState([])
   useEffect(()=>{
-    supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data)})
+    supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT'&&canSeeAnn(p.new,user?.role))setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
@@ -2705,7 +2706,7 @@ function SchoolPills({schoolIds,schools}){
 
 // Announcements tab with KM dismiss (read) button and acknowledgment tracking
 function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,user,schools,supaUsers}){
-  const visibleAnns=announcements.filter(a=>canSeeAnn(a,user?.role||"admin"))
+  const visibleAnns=announcements.filter(a=>canSeeAnn(a,user?.role))
   const [readIds,setReadIds]=useState(()=>{try{return JSON.parse(localStorage.getItem("readAnns")||"[]")}catch{return[]}})
   const [acks,setAcks]=useState([])
   const [showAcks,setShowAcks]=useState(null)
