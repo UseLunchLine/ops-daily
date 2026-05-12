@@ -385,7 +385,7 @@ export default function App(){
     {id:"events",label:"Calendar",short:"Calendar",I:CalendarDays},
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
-    ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck},{id:"auditlog",label:"Audit Log",short:"Audit",I:StickyNote}]:[]),
+    ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
   ]
 
   const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,events,setEvents,go,sById,uById,ctx,isAdmin:perms.admin}
@@ -400,8 +400,7 @@ export default function App(){
     if(page==="events")return <EventsPage {...props}/>
     if(page==="stats")return <StatsPage {...props}/>
     if(page==="checklist")return <ChecklistPage {...props}/>
-    if(page==="auditlog")return <AuditPage {...props}/>
-    if(page==="kitchen")return <KitchenPage {...props}/>
+    if(page==="kitchen")return <KitchenPage {...props} setEvents={setEvents}/>
     if(page==="admin") return <AdminPage {...props}/>
     return <DashPage {...props}/>
   }
@@ -553,10 +552,14 @@ function canSeeAnn(ann, userRole){
   return true // Unknown audience = show to everyone
 }
 
-function AnnouncementBanner({announcements,userRole}){
-  const [dismissed,setDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem("dismissedAnns")||"[]")}catch{return[]}})
-  const dismiss=(id)=>{const u=[...dismissed,id];setDismissed(u);try{localStorage.setItem("dismissedAnns",JSON.stringify(u))}catch{}}
-  const visible=announcements.filter(a=>!dismissed.includes(a.id)&&!(a.expires_at&&new Date(a.expires_at)<new Date()))
+function AnnouncementBanner({announcements,userRole,userId}){
+  const [acked,setAcked]=useState(()=>{try{return JSON.parse(localStorage.getItem("ackedAnns")||"[]")}catch{return[]}})
+  const acknowledge=async(ann)=>{
+    const u=[...acked,ann.id];setAcked(u);try{localStorage.setItem("ackedAnns",JSON.stringify(u))}catch{}
+    // Save to DB
+    try{await supabase.from("announcement_acknowledgments").upsert({id:userId+"_"+ann.id,announcement_id:ann.id,user_id:userId,user_name:"",acknowledged_at:new Date().toISOString()},{onConflict:"announcement_id,user_id",ignoreDuplicates:true})}catch(e){}
+  }
+  const visible=announcements.filter(a=>!acked.includes(a.id)&&!(a.expires_at&&new Date(a.expires_at)<new Date()))
   if(!visible.length)return null
   const ANN_COLORS={general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}}
   return(
@@ -573,7 +576,7 @@ function AnnouncementBanner({announcements,userRole}){
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
               <span style={{fontSize:10,color:at.color,opacity:.5,whiteSpace:"nowrap"}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
-              <button onClick={()=>dismiss(ann.id)} style={{width:22,height:22,borderRadius:"50%",border:"1px solid "+at.color+"44",background:"rgba(0,0,0,.05)",cursor:"pointer",color:at.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,lineHeight:1,flexShrink:0}}>✕</button>
+              <button onClick={()=>acknowledge(ann)} style={{padding:"3px 10px",borderRadius:R.full,border:"1px solid "+at.color+"44",background:"rgba(0,0,0,.05)",cursor:"pointer",color:at.color,fontSize:11,fontWeight:700,fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>✓ Got it</button>
             </div>
           </div>
         )
@@ -695,7 +698,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><AlertsBtn userId={user?.id}/><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
-      <AnnouncementBanner announcements={announcements} userRole={user?.role}/>
+      <AnnouncementBanner announcements={announcements} userRole={user?.role} userId={user?.id}/>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
         {[{label:"Total Recaps",val:totalShown,color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},{label:"All Good",val:goodShown,color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{label:"Need Attention",val:issueShown,color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"}].map(c=>(
@@ -2106,7 +2109,7 @@ const ANN_TYPES={
   urgent:{label:"Urgent",color:"#B45309",bg:"#FFFBEB"},
 }
 
-function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=false,events=[]}){
+function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=false,events=[],setEvents}){
   const isKM=user.role==="kitchen_manager"
   const canManageAll=["admin","director","supervisor","chef"].includes(user.role)
 
@@ -2126,8 +2129,17 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   useEffect(()=>{
     loadIssues();loadAnnouncements()
+    const uid0='kit-events-'+Date.now()
     const uid1='kitchen-issues-'+Date.now()
     const uid2='kitchen-anns-'+Date.now()
+    // Events realtime for KM calendar
+    supabase.channel(uid0).on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
+      if(setEvents){
+        if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+        if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+        if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old.id))
+      }
+    }).subscribe()
     const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
       if(p.eventType==='INSERT'){
         setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
@@ -2164,8 +2176,8 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   }
   const submitIssue=async()=>{
     if(!form.title.trim()){toast.show("Please add a title.","error");return}
-    const schoolId=canManageAll?form.school_id:(mySchool?.id||"")
-    if(!schoolId){toast.show("No school assigned.","error");return}
+    const schoolId=canManageAll?(form.school_id||(mySchool?.id||"")):(mySchool?.id||"")
+    if(!schoolId){toast.show(canManageAll?"Please select a school":"No school assigned to your account.","error");return}
     setLoading(true)
     const ni={id:uid(),type:form.type,title:form.title.trim(),description:form.description.trim(),priority:form.priority,school_id:schoolId,created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString(),resolved:false,resolution_note:""}
     const{error}=await supabase.from("kitchen_issues").insert(ni)
@@ -2241,6 +2253,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     {id:"calendar",label:"📅 Calendar"},
   ]
   const staffTabs=[
+    {id:"report",label:"📋 Report Issue"},
     {id:"issues",label:"🔴 Open"+(openIssues.length>0?" ("+openIssues.length+")":"")},
     {id:"resolved",label:"✅ Resolved"},
     {id:"announcements",label:"📢 Announcements"},
@@ -2333,7 +2346,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
           {myIssues.filter(i=>i.status!=="resolved").length===0?(
             <Box style={{textAlign:"center",padding:48,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700}}>No open issues!</div></Box>
           ):myIssues.filter(i=>i.status!=="resolved").sort((a,b)=>{const p={urgent:0,normal:1,low:2};return(p[a.priority]||1)-(p[b.priority]||1)}).map(issue=>(
-            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={canManageAll} onResolve={resolveIssue} onUpdateStatus={updateStatus}/>
+            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={canManageAll} onResolve={resolveIssue} onUpdateStatus={updateStatus} canDelete={canManageAll||issue.created_by===user.id} onDelete={(id)=>setIssues(p=>p.filter(x=>x.id!==id))}/>
           ))}
         </div>
       )}
@@ -2432,7 +2445,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   )
 }
 
-function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus}){
+function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus,canDelete=false,onDelete}){  
   const [showResolve,setShowResolve]=useState(false)
   const [note,setNote]=useState("")
   const kit=KIT[issue.type]||KIT.other
@@ -2555,7 +2568,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
   const [newMsgForm,setNewMsgForm]=useState({to_school_id:"",body:""})
   const [replyText,setReplyText]=useState({})
   const [showReply,setShowReply]=useState({})
-  const canSend=["admin","director","supervisor","chef"].includes(user.role)
+  const canSend=true // All roles can send messages
 
   useEffect(()=>{
     supabase.from("kitchen_messages").select("*").order("created_at",{ascending:true}).then(({data})=>{
@@ -2797,9 +2810,9 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
                 {/* Acknowledgment tracking for managers */}
                 {canManageAll&&annAcks.length>0&&(
                   <div style={{marginTop:8}}>
-                    <button onClick={()=>setShowAcks(showAcks===ann.id?null:ann.id)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#15803D",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
+                    {canManageAll&&<button onClick={()=>setShowAcks(showAcks===ann.id?null:ann.id)} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#15803D",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
                       ✓ {annAcks.length} acknowledged · {notAcked.length} pending
-                    </button>
+                    </button>}
                     {showAcks===ann.id&&(
                       <div style={{marginTop:8,display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                         <div>
