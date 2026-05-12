@@ -2127,6 +2127,11 @@ const ANN_TYPES={
 function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=false,events=[],setEvents}){
   const isKM=user.role==="kitchen_manager"
   const canManageAll=["admin","director","supervisor","chef"].includes(user.role)
+  // Use refs so realtime callbacks always have current values
+  const userRef=React.useRef(user)
+  const schoolsRef=React.useRef(schools)
+  const canManageAllRef=React.useRef(canManageAll)
+  React.useEffect(()=>{userRef.current=user;schoolsRef.current=schools;canManageAllRef.current=canManageAll})
 
   // If KM accessed via announcements route, show announcements only
   const [tab,setTab]=useState(kmAnnouncementsOnly?"announcements":isKM?"report":"issues")
@@ -2148,10 +2153,10 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     const uid1='kitchen-issues-'+Date.now()
     const uid2='kitchen-anns-'+Date.now()
     // Events realtime for KM calendar
-    supabase.channel(uid0).on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
+    const evCh=supabase.channel(uid0).on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
       if(setEvents){
         if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
-        if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+        if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?{...x,...p.new}:x))
         if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old?.id))
       }
     }).subscribe()
@@ -2161,19 +2166,29 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         // Only notify if:
         // - Admin team: always notify about new issues
         // - KM: only notify about issues at their own school (not from themselves)
-        const isMySchool=userSchoolIds.includes(p.new.school_id)
-        const isMyIssue=p.new.created_by===user?.id
-        const shouldNotify=!isMyIssue&&(canManageAll||isMySchool)
+        // Use refs to get current values (not stale closure)
+        const currentUser=userRef.current
+        const currentSchools=schoolsRef.current
+        const currentIsAdmin=canManageAllRef.current
+        const currentSchoolIds=(supaUsers.find(u=>u.id===currentUser?.id)?.school_ids||[])
+        const isMySchool=currentSchoolIds.includes(p.new.school_id)
+        const isMyIssue=p.new.created_by===currentUser?.id
+        // KMs ONLY get notified about their OWN school
+        // Admin team gets notified about ALL schools
+        const shouldNotify=!isMyIssue&&(currentIsAdmin?true:isMySchool)
         if(shouldNotify){
-          const sch=schools.find(s=>s.id===p.new.school_id)
+          const sch=currentSchools.find(s=>s.id===p.new.school_id)
           const kit=KIT[p.new.type]?.label||p.new.type
           const prefix=p.new.priority==='urgent'?'🔴 URGENT':'📋 New Issue'
           showLocalNotification('Ops Daily — '+prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | Reported by '+p.new.created_by_name)
-          if(canManageAll) sendPushNotification(prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | '+p.new.created_by_name,p.new.created_by,p.new.priority==='urgent')
+          if(currentIsAdmin) sendPushNotification(prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | '+p.new.created_by_name,p.new.created_by,p.new.priority==='urgent')
         }
       }
-      if(p.eventType==='UPDATE')setIssues(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
-      if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old.id))
+      if(p.eventType==='UPDATE'){
+        console.log('Issue updated realtime:',p.new.id,p.new.status)
+        setIssues(prev=>prev.map(x=>x.id===p.new.id?{...x,...p.new}:x))
+      }
+      if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
     const rt2=supabase.channel(uid2).on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT'){setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)]);showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))}
