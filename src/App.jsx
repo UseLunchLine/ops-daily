@@ -2204,7 +2204,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     setAnnModal(false)
     toast.show("Announcement posted!")
   }
-  }
 
   const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
   const openIssues=myIssues.filter(i=>!i.resolved)
