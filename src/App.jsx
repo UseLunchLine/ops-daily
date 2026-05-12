@@ -2066,9 +2066,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   useEffect(()=>{
     loadIssues();loadAnnouncements()
-    // Realtime for issues
-  useEffect(()=>{
-    loadIssues();loadAnnouncements()
     const uid1='kitchen-issues-'+Date.now()
     const uid2='kitchen-anns-'+Date.now()
     const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
