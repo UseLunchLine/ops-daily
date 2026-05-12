@@ -556,7 +556,7 @@ function canSeeAnn(ann, userRole){
 function AnnouncementBanner({announcements,userRole}){
   const [dismissed,setDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem("dismissedAnns")||"[]")}catch{return[]}})
   const dismiss=(id)=>{const u=[...dismissed,id];setDismissed(u);try{localStorage.setItem("dismissedAnns",JSON.stringify(u))}catch{}}
-  const visible=announcements.filter(a=>!dismissed.includes(a.id)&&!(a.expires_at&&new Date(a.expires_at)<new Date())&&canSeeAnn(a,userRole||"admin"))
+  const visible=announcements.filter(a=>!dismissed.includes(a.id)&&!(a.expires_at&&new Date(a.expires_at)<new Date()))
   if(!visible.length)return null
   const ANN_COLORS={general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}}
   return(
@@ -2706,7 +2706,7 @@ function SchoolPills({schoolIds,schools}){
 
 // Announcements tab with KM dismiss (read) button and acknowledgment tracking
 function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,user,schools,supaUsers}){
-  const visibleAnns=announcements.filter(a=>canSeeAnn(a,user?.role))
+  const visibleAnns=announcements
   const [readIds,setReadIds]=useState(()=>{try{return JSON.parse(localStorage.getItem("readAnns")||"[]")}catch{return[]}})
   const [acks,setAcks]=useState([])
   const [showAcks,setShowAcks]=useState(null)
