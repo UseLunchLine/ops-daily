@@ -260,6 +260,16 @@ function ResolveModal({recap,onClose,onResolve}){
   )
 }
 
+
+const ROLE_PAGE_MAP={
+  admin:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","admin","stats","checklist"],
+  director:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],
+  supervisor:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],
+  chef:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","checklist"],
+  kitchen_manager:["kitchen","directory"],
+}
+const ROLE_DEFAULT={admin:"dashboard",director:"dashboard",supervisor:"dashboard",chef:"dashboard",kitchen_manager:"kitchen"}
+
 export default function App(){
   const [users]=useState(SU)
   const [schools,setSchools]=useState(SS)
@@ -351,7 +361,11 @@ export default function App(){
   const [ctx,setCtx]=useState(null)
   const [sideOpen,setSideOpen]=useState(false)
   const [menuOpen,setMenuOpen]=useState(false)
-  const go=(pg,c=null)=>{setPage(pg);sessionStorage.setItem('ops_page',pg);if(c)setCtx(c)}
+  const go=(pg,ctx=null)=>{
+    const allowed=ROLE_PAGE_MAP[user?.role||"admin"]||ROLE_PAGE_MAP.admin
+    const target=allowed.includes(pg)?pg:(ROLE_DEFAULT[user?.role||"admin"]||"dashboard")
+    setPage(target);sessionStorage.setItem('ops_page',target);if(ctx)setCtx(ctx)
+  }
   const [mobile,setMobile]=useState(window.innerWidth<768)
   const toast=useToast()
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
@@ -370,27 +384,31 @@ export default function App(){
   const sById=id=>schools.find(s=>s.id===id)
   const uById=id=>users.find(u=>u.id===id)||supaUsers.find(u=>u.id===id)||{name:"--"}
 
-  const navItems=isKM?[
-    {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
-    {id:"checklist",label:"Daily Checklist",short:"Checklist",I:CheckSquare},
-    {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
-  ]:[
+  const ALL_NAV_ITEMS=[
     {id:"dashboard",label:"Dashboard",short:"Home",I:LayoutDashboard},
     {id:"submit",label:"Submit Recap",short:"Submit",I:PlusCircle},
     {id:"schools",label:"Schools",short:"Schools",I:Building2},
-    ...(perms.calloffs?[{id:"calloffs",label:"Call-Off Tracking",short:"Call-Offs",I:ClipboardList}]:[]),
+    {id:"calloffs",label:"Call-Off Tracking",short:"Call-Offs",I:ClipboardList},
     {id:"stats",label:"District Stats",short:"Stats",I:BarChart3},
-    {id:"checklist",label:"Daily Checklist",short:"Checklist",I:CheckSquare},
     {id:"kitchen",label:"Kitchen Hub",short:"Kitchen",I:ClipboardList},
+    {id:"checklist",label:"Daily Checklist",short:"Checklist",I:CheckSquare},
     {id:"events",label:"Calendar",short:"Calendar",I:CalendarDays},
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
-    ...(perms.admin?[{id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck}]:[]),
+    {id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck},
   ]
+  const navItems=ALL_NAV_ITEMS.filter(n=>(ROLE_PAGE_MAP[user?.role||"admin"]||ROLE_PAGE_MAP.admin).includes(n.id))
 
   const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,events,setEvents,go,sById,uById,ctx,isAdmin:perms.admin}
 
   const PageEl=()=>{
+    const allowed=ROLE_PAGE_MAP[user?.role||"admin"]||ROLE_PAGE_MAP.admin
+    if(!allowed.includes(page)){
+      const defaultPg=ROLE_DEFAULT[user?.role||"admin"]||"dashboard"
+      setTimeout(()=>{setPage(defaultPg);sessionStorage.setItem('ops_page',defaultPg)},0)
+      if(user?.role==="kitchen_manager") return <KitchenPage {...props} setEvents={setEvents}/>
+      return <DashPage {...props}/>
+    }
     if(page==="dashboard")return <DashPage {...props}/>
     if(page==="submit") return <SubmitPage {...props}/>
     if(page==="schools"||page==="school") return <SchoolsPage {...props}/>
@@ -2143,12 +2161,18 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
       if(p.eventType==='INSERT'){
         setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
-        if(p.new.created_by!==user?.id){
+        // Only notify if:
+        // - Admin team: always notify about new issues
+        // - KM: only notify about issues at their own school (not from themselves)
+        const isMySchool=userSchoolIds.includes(p.new.school_id)
+        const isMyIssue=p.new.created_by===user?.id
+        const shouldNotify=canManageAll?!isMyIssue:(isMySchool&&!isMyIssue)
+        if(shouldNotify){
           const sch=schools.find(s=>s.id===p.new.school_id)
           const kit=KIT[p.new.type]?.label||p.new.type
           const prefix=p.new.priority==='urgent'?'🔴 URGENT':'📋 New Issue'
           showLocalNotification('Ops Daily — '+prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | Reported by '+p.new.created_by_name)
-          sendPushNotification(prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | '+p.new.created_by_name,p.new.created_by,p.new.priority==='urgent')
+          if(canManageAll) sendPushNotification(prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | '+p.new.created_by_name,p.new.created_by,p.new.priority==='urgent')
         }
       }
       if(p.eventType==='UPDATE')setIssues(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
@@ -2509,6 +2533,9 @@ function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus,canD
           <button key={action.s} onClick={()=>onUpdateStatus(issue,action.s)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:R.md,border:"1px solid "+action.bd,background:action.bg,color:action.color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>{action.label}</button>
         )
       ))}
+      {canDelete&&(
+        <button onClick={async()=>{if(!window.confirm('Remove this issue?'))return;const{error}=await supabase.from('kitchen_issues').delete().eq('id',issue.id);if(!error&&onDelete)onDelete(issue.id)}} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:R.md,border:'1px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginTop:4}}>🗑 Remove</button>
+      )}
     </Box>
   )
 }
@@ -2569,6 +2596,8 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
   const [replyText,setReplyText]=useState({})
   const [showReply,setShowReply]=useState({})
   const canSend=true // All roles can send messages
+  // KM can only send to admin team (no school selector - sends to all admin)
+  const kmCanSendToAdmin=isKM
 
   useEffect(()=>{
     supabase.from("kitchen_messages").select("*").order("created_at",{ascending:true}).then(({data})=>{
@@ -2604,10 +2633,12 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     .map(root=>({root,replies:messages.filter(m=>m.reply_to===root.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))}))
     .filter(t=>{
       if(isKM){
-        // KM only sees messages directed to their school or broadcast to all kitchens
-        return !t.root.to_school_id||mySchoolIds.includes(t.root.to_school_id)||t.root.from_user_id===user.id||t.replies.some(r=>r.from_user_id===user.id)
+        // KM only sees threads they sent or received from admin
+        return t.root.from_user_id===user.id||
+               t.replies.some(r=>r.from_user_id===user.id)||
+               (!t.root.to_school_id&&t.root.from_role==="kitchen_manager"&&mySchoolIds.length>0)
       }
-      // Admin team sees all messages
+      // Admin team sees ALL messages
       return true
     })
     .sort((a,b)=>new Date(b.root.created_at)-new Date(a.root.created_at))
@@ -2618,12 +2649,14 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
 
   const sendNew=async()=>{
     if(!newMsgForm.body.trim())return
-    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,from_role:user.role,to_school_id:newMsgForm.to_school_id||null,to_user_id:null,body:newMsgForm.body.trim(),created_at:new Date().toISOString(),read:false,acknowledged:false,reply_to:null}
+    // KM always sends to admin team (no school target = broadcast to admin)
+    const toSchool=isKM?null:(newMsgForm.to_school_id||null)
+    const nm={id:uid(),from_user_id:user.id,from_name:user.name||user.email,from_role:user.role,to_school_id:toSchool,to_user_id:null,body:newMsgForm.body.trim(),created_at:new Date().toISOString(),read:false,acknowledged:false,reply_to:null}
     await supabase.from("kitchen_messages").insert(nm)
     setMessages(p=>[...p,nm])
     setNewMsgForm({to_school_id:"",body:""})
     setNewMsgModal(false)
-    toast.show("Message sent!")
+    toast.show("Message sent to Admin Team!")
   }
 
   const sendReply=async(rootId,rootSchoolId)=>{
@@ -2672,7 +2705,11 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
               <button onClick={()=>setNewMsgModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
             </div>
             <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
-              <div><L>Send To</L><SG schools={schools} value={newMsgForm.to_school_id} onChange={e=>setNewMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
+              {isKM?(
+                <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"10px 14px",fontSize:13,color:"#1D4ED8",fontWeight:600}}>📨 This message will be sent to the Admin Team</div>
+              ):(
+                <div><L>Send To</L><SG schools={schools} value={newMsgForm.to_school_id} onChange={e=>setNewMsgForm(f=>({...f,to_school_id:e.target.value}))} all="All Kitchens"/></div>
+              )}
               <div><L>Message *</L><textarea value={newMsgForm.body} onChange={e=>setNewMsgForm(f=>({...f,body:e.target.value}))} rows={4} placeholder="Type your message..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
               <div style={{display:"flex",gap:10}}><Btn onClick={()=>setNewMsgModal(false)} variant="outline">Cancel</Btn><Btn onClick={sendNew} disabled={!newMsgForm.body.trim()}>Send</Btn></div>
             </div>
@@ -2995,7 +3032,7 @@ const CHECKLIST_CATS=[...new Set(CHECKLIST_ITEMS.map(i=>i.cat))]
 function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
   const [submissions,setSubmissions]=useState([])
   const [tab,setTab]=useState("submit")
-  const [form,setForm]=useState({school_id:"",date:TODAY,items:{},notes:""})
+  const [form,setForm]=useState({school_id:"",date:TODAY,items:{}})
   const [loading,setLoading]=useState(false)
   const [mobile,setMobile]=useState(window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
@@ -3003,9 +3040,19 @@ function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
   const isKM=user.role==="kitchen_manager"
   const mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
   const mySchool=schools.find(s=>mySchoolIds.includes(s.id))
+  const [alreadySubmittedToday,setAlreadySubmittedToday]=useState(false)
 
   useEffect(()=>{
-    supabase.from("checklist_submissions").select("*").order("created_at",{ascending:false}).then(({data})=>{if(data)setSubmissions(data)})
+    supabase.from("checklist_submissions").select("*").order("created_at",{ascending:false}).then(({data})=>{
+      if(data){
+        setSubmissions(data)
+        // Check if KM already submitted today
+        if(isKM&&mySchool){
+          const todaySub=data.find(s=>s.school_id===mySchool.id&&s.date===TODAY)
+          if(todaySub) setAlreadySubmittedToday(true)
+        }
+      }
+    })
   },[])
 
   const completedCount=Object.values(form.items).filter(Boolean).length
@@ -3017,12 +3064,13 @@ function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
     const missing=CHECKLIST_ITEMS.filter(i=>!form.items[i.id])
     if(missing.length>3){toast.show("Please complete at least "+(totalItems-3)+" items","error");return}
     setLoading(true)
-    const ns={id:uid(),school_id:schoolId,date:form.date,submitted_by:user.id,submitted_by_name:user.name||user.email,items:form.items,notes:form.notes,created_at:new Date().toISOString()}
+    const ns={id:uid(),school_id:schoolId,date:form.date,submitted_by:user.id,submitted_by_name:user.name||user.email,items:form.items,notes:"",created_at:new Date().toISOString()}
     const{error}=await supabase.from("checklist_submissions").insert(ns)
     if(error){toast.show("Failed: "+error.message,"error");setLoading(false);return}
     setSubmissions(p=>[ns,...p])
     logAudit("submit_checklist","checklist_submissions",ns.id,user.id,user.name||user.email,user.role,schoolId,{completed:completedCount,total:totalItems})
-    setForm({school_id:"",date:TODAY,items:{},notes:""})
+    setForm({school_id:"",date:TODAY,items:{}})
+    if(isKM) setAlreadySubmittedToday(true)
     toast.show("Checklist submitted!")
     setLoading(false)
   }
@@ -3036,7 +3084,15 @@ function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
       <PageHeader title="Daily Checklist" subtitle={isKM?(mySchool?.name||"Your Kitchen"):"Track daily kitchen compliance across all schools"}/>
       <TabBar tabs={[{id:"submit",label:"✅ Submit"},{id:"history",label:"📋 History"},{id:"overview",label:"📊 Overview"}]} active={tab} set={setTab}/>
 
-      {tab==="submit"&&(
+      {tab==="submit"&&alreadySubmittedToday&&isKM&&(
+        <Box style={{textAlign:"center",padding:48}}>
+          <div style={{fontSize:48,marginBottom:12}}>✅</div>
+          <div style={{fontWeight:800,fontSize:18,color:"#15803D",marginBottom:8}}>Checklist Completed!</div>
+          <div style={{fontSize:13,color:C.textMuted}}>You have already submitted today's checklist for {mySchool?.name}.</div>
+          <div style={{fontSize:12,color:C.textLight,marginTop:8}}>Come back tomorrow!</div>
+        </Box>
+      )}
+      {tab==="submit"&&!(alreadySubmittedToday&&isKM)&&(
         <div style={{maxWidth:600,display:"flex",flexDirection:"column",gap:14}}>
           {isKM&&mySchool&&<div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1D4ED8"}}>📍 Submitting for: {mySchool.name}</div>}
           {!isKM&&<Box style={{marginBottom:4}}><L>School</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></Box>}
@@ -3064,7 +3120,7 @@ function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
               </div>
             </Box>
           ))}
-          <Box><L>Notes / Issues</L><textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Any additional notes or issues to flag..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></Box>
+
           <Btn onClick={submit} disabled={loading}><CheckCircle size={14}/>{loading?"Submitting...":"Submit Checklist"}</Btn>
         </div>
       )}
