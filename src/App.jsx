@@ -544,8 +544,9 @@ function Login(){
 
 
 function canSeeAnn(ann, userRole){
+  if(!ann) return false
   const aud = ann.audience || "all"
-  if(aud === "all") return true
+  if(!aud || aud === "all") return true
   if(aud === "admin_team") return ["admin","director","supervisor","chef"].includes(userRole)
   if(aud === "kitchen_manager") return userRole === "kitchen_manager"
   return true
@@ -633,7 +634,7 @@ function AlertsBtn({userId}){
 function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
   const [announcements,setAnnouncements]=useState([])
   useEffect(()=>{
-    supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
+    supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data)})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT'&&canSeeAnn(p.new,user?.role))setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
@@ -1519,7 +1520,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Admin Panel" subtitle="Manage users and school assignments"/>
-      <TabBar tabs={[{id:"users",label:"User Management"},{id:"assign",label:"Staff Assignments"}]} active={tab} set={id=>{setTab(id);setEs(null)}}/>
+      <TabBar tabs={[{id:"users",label:"👥 User Management"},{id:"assign",label:"🏫 Staff Assignments"},{id:"perms",label:"🔐 Permissions"}]} active={tab} set={id=>{setTab(id);setEs(null)}}/>
 
       {userModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
@@ -1619,6 +1620,61 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
           </div>
         </Box>}
       </div>}
+
+      {tab==="perms"&&<PermissionsTab supaUsers={supaUsers} setSupaUsers={setSupaUsers} toast={toast}/>}
+    </div>
+  )
+}
+
+const ROLE_PERMISSIONS={admin:{label:"Admin",color:"#4527A0",pages:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","admin","stats","checklist","auditlog"],canEdit:false},director:{label:"Director",color:"#1565C0",pages:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],canEdit:true},supervisor:{label:"Op Supervisor",color:"#01579B",pages:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],canEdit:true},chef:{label:"Chef",color:"#E65100",pages:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","checklist"],canEdit:true},kitchen_manager:{label:"Kitchen Manager",color:"#15803D",pages:["kitchen","directory"],canEdit:false}}
+const PAGE_LABELS={dashboard:"Dashboard",submit:"Submit Recap",schools:"Schools",calloffs:"Call-Off Tracking",kitchen:"Kitchen Hub",events:"Calendar",map:"School Map",directory:"Staff Directory",stats:"District Stats",checklist:"Daily Checklist",admin:"Admin Panel",auditlog:"Audit Log"}
+
+function PermissionsTab({supaUsers,setSupaUsers,toast}){
+  const [selected,setSelected]=useState("director")
+  const [customPerms,setCustomPerms]=useState(()=>{try{return JSON.parse(localStorage.getItem("customPerms")||"{}")}catch{return{}}})
+  const [saving,setSaving]=useState(false)
+  const rolePerms=ROLE_PERMISSIONS[selected]
+  const allPages=Object.keys(PAGE_LABELS)
+  const currentPages=customPerms[selected]||rolePerms?.pages||[]
+  const toggle=(page)=>{
+    if(!rolePerms?.canEdit) return
+    const current=customPerms[selected]||rolePerms.pages
+    const updated=current.includes(page)?current.filter(p=>p!==page):[...current,page]
+    setCustomPerms(p=>({...p,[selected]:updated}))
+  }
+  return(
+    <div>
+      <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"12px 16px",fontSize:13,color:"#1D4ED8",marginBottom:16}}>🔐 Control which pages each role can access. Admin and Kitchen Manager permissions are fixed by design.</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+        {Object.entries(ROLE_PERMISSIONS).map(([role,rp])=>(<button key={role} onClick={()=>setSelected(role)} style={{padding:"8px 16px",borderRadius:R.md,border:"2px solid "+(selected===role?rp.color:"#E2E8F0"),background:selected===role?rp.color+"15":"#fff",color:selected===role?rp.color:C.textMuted,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{rp.label}</button>))}
+      </div>
+      <Box style={{padding:20}}>
+        <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:4}}>{rolePerms?.label} Permissions</div>
+        <div style={{fontSize:12,color:C.textMuted,marginBottom:16}}>{rolePerms?.canEdit?"Toggle pages on/off for this role. Changes apply to all users with this role.":"This role's permissions are fixed and cannot be changed."}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+          {allPages.map(page=>{
+            const hasAccess=currentPages.includes(page)
+            const isFixed=!rolePerms?.canEdit
+            return(<button key={page} onClick={()=>toggle(page)} disabled={isFixed} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:R.md,border:"1px solid "+(hasAccess?"#16A34A":"#E2E8F0"),background:hasAccess?"#F0FDF4":"#F8FAFC",cursor:isFixed?"default":"pointer",fontFamily:"inherit",opacity:isFixed?.7:1}}>
+              <div style={{width:18,height:18,borderRadius:4,border:"2px solid "+(hasAccess?"#16A34A":"#CBD5E1"),background:hasAccess?"#16A34A":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{hasAccess&&<span style={{color:"#fff",fontSize:11,fontWeight:900}}>✓</span>}</div>
+              <span style={{fontSize:12,fontWeight:600,color:hasAccess?"#15803D":C.textMuted}}>{PAGE_LABELS[page]}</span>
+            </button>)
+          })}
+        </div>
+        {rolePerms?.canEdit&&(<div style={{marginTop:16,display:"flex",gap:10,alignItems:"center"}}>
+          <Btn onClick={async()=>{setSaving(true);try{localStorage.setItem("customPerms",JSON.stringify(customPerms));toast.show("Permissions saved!")}catch(e){toast.show("Failed","error")};setSaving(false)}} disabled={saving}>{saving?"Saving...":"Save Permissions"}</Btn>
+          <button onClick={()=>{const p={...customPerms};delete p[selected];setCustomPerms(p);localStorage.setItem("customPerms",JSON.stringify(p));toast.show("Reset to defaults")}} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,fontFamily:"inherit"}}>Reset to defaults</button>
+        </div>)}
+      </Box>
+      <Box style={{marginTop:16,padding:16,background:"#FFFBEB",border:"1px solid #FDE68A"}}>
+        <div style={{fontWeight:700,fontSize:13,color:"#B45309",marginBottom:8}}>📋 Current Role Summary</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {Object.entries(ROLE_PERMISSIONS).map(([role,rp])=>{
+            const pages=customPerms[role]||rp.pages
+            return(<div key={role} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{background:rp.color+"15",color:rp.color,fontWeight:700,fontSize:11,padding:"2px 8px",borderRadius:R.full,flexShrink:0}}>{rp.label}</span><span style={{fontSize:11,color:C.textMuted}}>{pages.map(p=>PAGE_LABELS[p]).join(", ")}</span></div>)
+          })}
+        </div>
+      </Box>
     </div>
   )
 }
@@ -2649,7 +2705,7 @@ function SchoolPills({schoolIds,schools}){
 
 // Announcements tab with KM dismiss (read) button and acknowledgment tracking
 function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,user,schools,supaUsers}){
-  const visibleAnns=announcements.filter(a=>canSeeAnn(a,user?.role))
+  const visibleAnns=announcements.filter(a=>canSeeAnn(a,user?.role||"admin"))
   const [readIds,setReadIds]=useState(()=>{try{return JSON.parse(localStorage.getItem("readAnns")||"[]")}catch{return[]}})
   const [acks,setAcks]=useState([])
   const [showAcks,setShowAcks]=useState(null)
