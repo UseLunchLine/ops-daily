@@ -322,24 +322,30 @@ export default function App(){
         }))
       }
       setDbReady(true)
-      // Realtime subscriptions
-    const rt1=supabase.channel('recaps-rt').on('postgres_changes',{event:'*',schema:'public',table:'recaps'},p=>{
+    }
+    loadData()
+  },[])
+
+  // Realtime subscriptions in their own useEffect so they properly clean up
+  useEffect(()=>{
+    const channels=[
+      supabase.channel('rt-recaps').on('postgres_changes',{event:'*',schema:'public',table:'recaps'},p=>{
         if(p.eventType==='INSERT')setRecaps(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setRecaps(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
         if(p.eventType==='DELETE')setRecaps(prev=>prev.filter(x=>x.id!==p.old.id))
-      }).subscribe()
-      const rt2=supabase.channel('calloffs-rt').on('postgres_changes',{event:'*',schema:'public',table:'calloffs'},p=>{
+      }).subscribe(),
+      supabase.channel('rt-calloffs').on('postgres_changes',{event:'*',schema:'public',table:'calloffs'},p=>{
         if(p.eventType==='INSERT')setCalloffs(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setCalloffs(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
         if(p.eventType==='DELETE')setCalloffs(prev=>prev.filter(x=>x.id!==p.old.id))
-      }).subscribe()
-      const rt3=supabase.channel('events-rt').on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
+      }).subscribe(),
+      supabase.channel('rt-events').on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
         if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
         if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
         if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old.id))
-      }).subscribe()
-    }
-    loadData()
+      }).subscribe(),
+    ]
+    return()=>channels.forEach(ch=>ch.unsubscribe())
   },[])
   const [page,setPage]=useState(()=>sessionStorage.getItem('ops_page')||"dashboard")
   const [ctx,setCtx]=useState(null)
