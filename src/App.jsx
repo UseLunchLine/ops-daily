@@ -1882,6 +1882,14 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
                   ])}
                 </div>
               </div>
+              <div><L>Who Can See This Event?</L>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+                  {[{v:"all",l:"👥 Everyone"},{v:"admin",l:"🔑 Admin Only"},{v:"staff",l:"👔 Staff Only"},{v:"kitchen_manager",l:"🍳 Kitchen Mgrs"},{v:"chef",l:"👨‍🍳 Chefs"},{v:"supervisor",l:"🔍 Supervisors"}].map(a=>{
+                    const sel=form.audience===a.v
+                    return <button key={a.v} onClick={()=>setForm(f=>({...f,audience:a.v}))} style={{padding:"7px 4px",borderRadius:R.md,border:"2px solid "+(sel?"#2563EB":C.border),background:sel?"#EFF6FF":"#fff",color:sel?"#2563EB":C.textMuted,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>{a.l}</button>
+                  })}
+                </div>
+              </div>
               <div><L>Description / Notes</L><textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={3} placeholder="Add any details, agenda items, or notes..." style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
               <div style={{display:"flex",gap:10,paddingTop:4}}>
                 <Btn onClick={()=>setModal(null)} variant="outline">Cancel</Btn>
