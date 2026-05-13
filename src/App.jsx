@@ -537,7 +537,7 @@ function Login(){
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#EFF6FF 0%,#F5F3FF 100%)",padding:16,fontFamily:"system-ui,sans-serif"}}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",gap:10}}><div style={{width:52,height:52,borderRadius:14,background:"#111",border:"3px solid #3B82F6",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 24px rgba(59,130,246,.3)"}}><div style={{width:24,height:24,borderRadius:"50%",border:"3px solid #fff",background:"transparent"}}></div></div></div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><img src="/logo.png" alt="Ops Daily" style={{width:56,height:56,borderRadius:16,boxShadow:"0 8px 24px rgba(59,130,246,.3)"}}/></div>
           <h1 style={{fontSize:26,fontWeight:900,color:C.text,margin:"0 0 4px"}}>Ops Daily</h1>
           <p style={{fontSize:13,color:C.textMuted,margin:0}}>South Bend Community School Corporation</p>
         </div>
@@ -575,9 +575,20 @@ function canSeeAnn(ann, userRole){
 
 function AnnouncementBanner({announcements,userRole,userId}){
   const [acked,setAcked]=useState(()=>{try{return JSON.parse(localStorage.getItem("ackedAnns")||"[]")}catch{return[]}})
+  // Sync acked from DB on mount so it persists across devices
+  useEffect(()=>{
+    if(!userId) return
+    supabase.from("announcement_acknowledgments").select("announcement_id").eq("user_id",userId).then(({data})=>{
+      if(data&&data.length){
+        const dbAcked=data.map(a=>a.announcement_id)
+        const merged=[...new Set([...acked,...dbAcked])]
+        setAcked(merged)
+        try{localStorage.setItem("ackedAnns",JSON.stringify(merged))}catch{}
+      }
+    })
+  },[userId])
   const acknowledge=async(ann)=>{
     const u=[...acked,ann.id];setAcked(u);try{localStorage.setItem("ackedAnns",JSON.stringify(u))}catch{}
-    // Save to DB
     try{await supabase.from("announcement_acknowledgments").upsert({id:userId+"_"+ann.id,announcement_id:ann.id,user_id:userId,user_name:"",acknowledged_at:new Date().toISOString()},{onConflict:"announcement_id,user_id",ignoreDuplicates:true})}catch(e){}
   }
   const visible=announcements.filter(a=>!acked.includes(a.id)&&canSeeAnn(a,userRole)&&!(a.expires_at&&new Date(a.expires_at)<new Date()))
@@ -1548,7 +1559,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Admin Panel" subtitle="Manage users and school assignments"/>
-      <TabBar tabs={[{id:"users",label:"👥 User Management"},{id:"assign",label:"🏫 Staff Assignments"},{id:"perms",label:"🔐 Permissions"}]} active={tab} set={id=>{setTab(id);setEs(null)}}/>
+      <TabBar tabs={[{id:"users",label:"👥 Users"},{id:"assign",label:"🏫 Assignments"},{id:"perms",label:"🔐 Permissions"},{id:"announcements",label:"📢 Announcements"}]} active={tab} set={id=>{setTab(id);setEs(null)}}/>
 
       {userModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:50,overflowY:"auto"}}>
@@ -1650,6 +1661,47 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
       </div>}
 
       {tab==="perms"&&<PermissionsTab supaUsers={supaUsers} setSupaUsers={setSupaUsers} toast={toast}/>}
+      {tab==="announcements"&&<AdminAnnouncementsTab toast={toast} schools={schools}/>}
+    </div>
+  )
+}
+
+function AdminAnnouncementsTab({toast,schools}){
+  const [anns,setAnns]=useState([])
+  const [loading,setLoading]=useState(true)
+  useEffect(()=>{
+    supabase.from("announcements").select("*").order("created_at",{ascending:false}).then(({data})=>{if(data)setAnns(data);setLoading(false)})
+    const rt=supabase.channel("admin-anns-rt-"+Date.now()).on("postgres_changes",{event:"*",schema:"public",table:"announcements"},p=>{
+      if(p.eventType==="INSERT")setAnns(prev=>[p.new,...prev])
+      if(p.eventType==="UPDATE")setAnns(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+      if(p.eventType==="DELETE")setAnns(prev=>prev.filter(x=>x.id!==p.old?.id))
+    }).subscribe()
+    return()=>rt.unsubscribe()
+  },[])
+  const del=async(id)=>{if(!window.confirm("Delete this announcement?"))return;await supabase.from("announcements").delete().eq("id",id);setAnns(p=>p.filter(x=>x.id!==id));toast.show("Deleted.")}
+  if(loading) return <Box style={{padding:40,textAlign:"center",color:C.textMuted}}>Loading...</Box>
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{fontSize:13,color:C.textMuted,marginBottom:4}}>All announcements across the district — live view.</div>
+      {anns.length===0?<Box style={{padding:40,textAlign:"center",color:C.textMuted}}>No announcements yet.</Box>
+      :anns.map(a=>{
+        const ANN_COLORS={general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}}
+        const at=ANN_COLORS[a.type]||ANN_COLORS.general
+        return(
+          <Box key={a.id} style={{padding:"12px 16px",borderLeft:"4px solid "+at.color,display:"flex",alignItems:"center",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.text}}>{a.title}</div>
+              {a.body&&<div style={{fontSize:12,color:C.textMuted,marginTop:2}}>{a.body}</div>}
+              <div style={{fontSize:11,color:C.textLight,marginTop:4,display:"flex",gap:8}}>
+                <span>{fd(a.created_at?.slice(0,10)||TODAY)}</span>
+                {a.created_by_name&&<span>by {a.created_by_name}</span>}
+                {a.audience&&<Pill bg={at.bg} tx={at.color}>{a.audience==="all"?"Everyone":a.audience==="admin_team"?"Admin Team":"Kitchen Mgrs"}</Pill>}
+              </div>
+            </div>
+            <button onClick={()=>del(a.id)} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"5px 10px",cursor:"pointer",color:"#DC2626",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>Delete</button>
+          </Box>
+        )
+      })}
     </div>
   )
 }
@@ -2230,7 +2282,8 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     // Fire notification to all staff for urgent issues
     const schoolName=schools.find(s=>s.id===schoolId)?.name||"Unknown School"
     const kitType=KIT[ni.type]?.label||ni.type
-    const notifTitle=(ni.priority==="urgent"?"🔴 URGENT: ":"New Issue: ")+schoolName
+    const priorityLabel=ni.priority==="urgent"?"🔴 URGENT":ni.priority==="normal"?"🟡 Issue":"🟢 Issue"
+    const notifTitle=priorityLabel+": "+schoolName
     const notifBody=kitType+" — "+ni.title+(ni.description?" | "+ni.description.slice(0,80):"")+" | "+user.name
     showLocalNotification("Ops Daily — "+notifTitle, notifBody)
     sendPushNotification(notifTitle, notifBody, user.id, ni.priority==="urgent")
@@ -2288,12 +2341,16 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   // Compute unread from supabase on mount - use a simple local state
   const [unreadMsgs,setUnreadMsgs]=React.useState(0)
   React.useEffect(()=>{
-    supabase.from('kitchen_messages').select('id,read,to_school_id,from_user_id').then(({data})=>{
+    supabase.from('kitchen_messages').select('id,read,to_school_id,from_user_id,reply_to,created_at').then(({data})=>{
       if(!data) return
       const mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
+      const sevenDaysAgo=new Date(Date.now()-7*24*60*60*1000).toISOString()
+      // Only count recent unread messages (last 30 days) not sent by me
       const unread=data.filter(m=>{
         if(m.from_user_id===user.id) return false
-        if(isKM) return mySchoolIds.includes(m.to_school_id)||(!m.to_school_id&&m.from_user_id!==user.id)
+        if(m.reply_to) return false // don't count replies separately
+        if(new Date(m.created_at)<new Date(Date.now()-30*24*60*60*1000)) return false
+        if(isKM) return !m.to_school_id||mySchoolIds.includes(m.to_school_id)
         return true
       }).filter(m=>!m.read).length
       setUnreadMsgs(unread)
@@ -2625,6 +2682,7 @@ function SchoolsPage({ctx,schools,recaps,setRecaps,users,supaUsers,toast,user,is
 
 // Shared messaging component used inside Kitchen Hub for both KM and staff
 function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],showPrevious=false}){
+  const [senderFilter,setSenderFilter]=useState("")
   const [messages,setMessages]=useState([])
   const [loading,setLoading]=useState(true)
   const [newMsgModal,setNewMsgModal]=useState(false)
@@ -2679,9 +2737,10 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     })
     .sort((a,b)=>new Date(b.root.created_at)-new Date(a.root.created_at))
 
-  const threads=showPrevious
+  const rawThreads=showPrevious
     ?allThreads.filter(t=>t.root.created_at<sevenDaysAgo||t.root.closed)
     :allThreads.filter(t=>t.root.created_at>=sevenDaysAgo&&!t.root.closed)
+  const threads=senderFilter?rawThreads.filter(t=>t.root.from_user_id===senderFilter||t.replies.some(r=>r.from_user_id===senderFilter)):rawThreads
 
   const sendNew=async()=>{
     if(!newMsgForm.body.trim())return
@@ -2794,7 +2853,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
               <div style={{padding:"8px 16px",borderTop:"1px solid #F1F5F9",display:"flex",gap:8,flexWrap:"wrap"}}>
                 {canAck&&<button onClick={()=>acknowledge(root.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BBF7D0",background:"#F0FDF4",color:"#15803D",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}><Check size={11}/>Acknowledge</button>}
                 <button onClick={()=>setShowReply(p=>({...p,[root.id]:!p[root.id]}))} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #BFDBFE",background:"#EFF6FF",color:"#1D4ED8",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↩ Reply</button>
-                <button onClick={async()=>{await supabase.from("kitchen_messages").update({closed:true}).eq("id",root.id);setMessages(p=>p.map(x=>x.id===root.id?{...x,closed:true}:x));toast.show("Thread closed.")}} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#F8FAFC",color:C.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>
+                {!showPrevious&&<button onClick={async()=>{await supabase.from("kitchen_messages").update({closed:true}).eq("id",root.id);setMessages(p=>p.map(x=>x.id===root.id?{...x,closed:true}:x));toast.show("Thread closed.")}} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#F8FAFC",color:C.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕ Close</button>}
               </div>
               {showReply[root.id]&&(
                 <div style={{padding:"0 16px 12px",display:"flex",gap:8}}>
