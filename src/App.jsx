@@ -412,7 +412,7 @@ export default function App(){
       if(user?.role==="kitchen_manager") return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go}/>
       return <DashPage {...props}/>
     }
-    if(page==="dashboard")return <DashPage {...props}/>
+    if(page==="dashboard")return <DashPage {...props} events={events} supaUsers={supaUsers}/>
     if(page==="submit") return <SubmitPage {...props}/>
     if(page==="schools"||page==="school") return <SchoolsPage {...props}/>
     if(page==="calloffs") return <CalloffsPage {...props}/>
@@ -421,7 +421,7 @@ export default function App(){
     if(page==="events")return <EventsPage {...props}/>
     if(page==="stats")return <StatsPage {...props}/>
     if(page==="checklist")return <ChecklistPage {...props}/>
-    if(page==="kitchen")return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go}/>
+    if(page==="kitchen")return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go} ctx={ctx}/>
     if(page==="admin") return <AdminPage {...props}/>
     return <DashPage {...props}/>
   }
@@ -667,8 +667,10 @@ function AlertsBtn({userId}){
 }
 
 
-function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin}){
+function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin,events=[],supaUsers=[]}){  
   const [announcements,setAnnouncements]=useState([])
+  const [unreadMsgs,setUnreadMsgs]=useState(0)
+  const isKMDash=user?.role==="kitchen_manager"
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
@@ -731,6 +733,55 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><AlertsBtn userId={user?.id}/><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
       <AnnouncementBanner announcements={announcements} userRole={user?.role} userId={user?.id}/>
+
+      {/* Quick Access Cards - front and center */}
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(3,1fr)",gap:12,marginBottom:20}}>
+        {/* Announcements Card */}
+        <div onClick={()=>go("kitchen",{tab:"announcements"})} style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(37,99,235,.25)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📢</div>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Announcements</span>
+            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{announcements.filter(a=>canSeeAnn(a,user?.role)).length}</span>}
+          </div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
+            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0
+              ?announcements.filter(a=>canSeeAnn(a,user?.role))[0].title
+              :"No active announcements"}
+          </div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view all →</div>
+        </div>
+
+        {/* Calendar Card */}
+        <div onClick={()=>go("events")} style={{background:"linear-gradient(135deg,#0D9488,#0F766E)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(13,148,136,.22)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📅</div>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Calendar</span>
+            {events.filter(e=>e.date>=TODAY).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY).length}</span>}
+          </div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
+            {events.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date))[0]
+              ?fd(events.filter(e=>e.date>=TODAY)[0].date)+" — "+events.filter(e=>e.date>=TODAY)[0].title
+              :"No upcoming events"}
+          </div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view →</div>
+        </div>
+
+        {/* Messages Card */}
+        <div onClick={()=>go("kitchen",{tab:"inbox"})} style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(124,58,237,.22)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>💬</div>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Messages</span>
+            {unreadMsgs>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{unreadMsgs}</span>}
+          </div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
+            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":""):"No unread messages"}
+          </div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to open →</div>
+        </div>
+      </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
         {[{label:"Total Recaps",val:totalShown,color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},{label:"All Good",val:goodShown,color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{label:"Need Attention",val:issueShown,color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"}].map(c=>(
@@ -2198,6 +2249,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   // If KM accessed via announcements route, show announcements only
   const [tab,setTab]=useState(()=>{
     const saved=sessionStorage.getItem("kitchen_tab")
+    if(ctx?.tab){sessionStorage.setItem("kitchen_tab",ctx.tab);return ctx.tab}
     if(saved) return saved
     return kmAnnouncementsOnly?"announcements":isKM?"report":"issues"
   })
