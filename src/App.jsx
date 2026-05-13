@@ -2144,11 +2144,16 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   React.useEffect(()=>{userRef.current=user;schoolsRef.current=schools;canManageAllRef.current=canManageAll})
 
   // If KM accessed via announcements route, show announcements only
-  const [tab,setTab]=useState(kmAnnouncementsOnly?"announcements":isKM?"report":"issues")
+  const [tab,setTab]=useState(()=>{
+    const saved=sessionStorage.getItem("kitchen_tab")
+    if(saved) return saved
+    return kmAnnouncementsOnly?"announcements":isKM?"report":"issues"
+  })
   const [issues,setIssues]=useState([])
   const [announcements,setAnnouncements]=useState([])
   const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
   const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",expires_at:"",due_date:"",audience:"all"})
+  const setTabAndSave=(t)=>{setTabAndSave(t);sessionStorage.setItem("kitchen_tab",t)}
   const [annModal,setAnnModal]=useState(false)
   const [loading,setLoading]=useState(false)
   const [mobile,setMobile]=useState(window.innerWidth<768)
@@ -2209,7 +2214,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
-    return()=>{rt1.unsubscribe();rt2.unsubscribe()}
+    return()=>{evCh.unsubscribe();rt1.unsubscribe();rt2.unsubscribe()}
   },[])
 
   const loadIssues=async()=>{
@@ -2319,7 +2324,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       />
 
       {isKM&&announcements.length>0&&(
-        <div style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.lg,padding:"14px 20px",marginBottom:20,display:"flex",alignItems:"center",gap:14,boxShadow:"0 4px 12px rgba(37,99,235,.3)",cursor:"pointer"}} onClick={()=>setTab("announcements")}>
+        <div style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.lg,padding:"14px 20px",marginBottom:20,display:"flex",alignItems:"center",gap:14,boxShadow:"0 4px 12px rgba(37,99,235,.3)",cursor:"pointer"}} onClick={()=>setTabAndSave("announcements")}>
           <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>📢</div>
           <div style={{flex:1}}>
             <div style={{fontWeight:800,fontSize:13,color:"#fff",marginBottom:2}}>{announcements[0].title}</div>
