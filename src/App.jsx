@@ -516,7 +516,7 @@ export default function App(){
           </button>
         </div>
       </aside>
-      <main style={{flex:1,background:C.bg,overflowX:"hidden",minWidth:0}}><PageEl/></main>
+      <main style={{flex:1,background:C.bg,overflowX:"hidden",minWidth:0}}><div style={{maxWidth:1400,width:"100%",margin:"0 auto"}}><PageEl/></div></main>
     </div>
   )
 }
@@ -2418,7 +2418,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     {id:"report",label:"📋 Report Issue"},
     {id:"issues",label:"🔴 Issues"+(myIssues.filter(i=>i.status!=="resolved").length>0?" ("+myIssues.filter(i=>i.status!=="resolved").length+")":"")},
     {id:"announcements",label:"📢 Announcements"},
-    {id:"inbox",label:"💬 Messages"+(unreadMsgs>0?" ("+unreadMsgs+")":"")},
+    {id:"inbox",label:"💬 Messages"},
     {id:"inbox_prev",label:"📂 Previous"},
     {id:"calendar",label:"📅 Calendar"},
   ]
