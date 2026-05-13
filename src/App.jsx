@@ -350,8 +350,11 @@ export default function App(){
         if(p.eventType==='DELETE')setCalloffs(prev=>prev.filter(x=>x.id!==p.old?.id))
       }).subscribe(),
       supabase.channel('rt-events').on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
-        if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
-        if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+        if(p.eventType==='INSERT'){
+          setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+          showLocalNotification('Ops Daily — 📅 New Event: '+p.new.title, (p.new.date||'')+(p.new.location?' @ '+p.new.location:''))
+        }
+        if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?{...x,...p.new}:x))
         if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old?.id))
       }).subscribe(),
     ]
@@ -1882,6 +1885,10 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
       setEvents(p=>[...p,ne].sort((a,b)=>a.date.localeCompare(b.date)))
       await supabase.from("events").insert(ne)
       toast.show("Event created!")
+      // Push notification to relevant audience
+      const audLabel=ne.audience==="kitchen_manager"?"Kitchen Managers":ne.audience==="admin_team"?"Admin Team":"Everyone"
+      sendPushNotification("📅 New Event: "+ne.title, fd(ne.date)+(ne.time?" at "+fmt(ne.time):"")+(ne.location?" @ "+ne.location:""), user.id, false, null, ne.audience||"all")
+      showLocalNotification("Ops Daily — 📅 New Event: "+ne.title, fd(ne.date)+(ne.time?" at "+fmt(ne.time):"")+(ne.location?" @ "+ne.location:""))
     } else {
       const up={...form,title:form.title.trim()}
       setEvents(p=>p.map(e=>e.id===modal.id?{...e,...up}:e))
@@ -2391,7 +2398,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       )}
 
       {/* RESOLVED - Staff view */}
-      {tab==="resolved"&&canManageAll&&(
+      {tab==="resolved"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {resolvedIssues.length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No resolved issues yet.</Box>
@@ -2410,9 +2417,14 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       {tab==="calendar"&&isKM&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           
-          {events.filter(e=>!e.school_ids?.length||e.school_ids.includes(mySchool?.id)).length===0?(
+          {events.filter(e=>{const aud=e.audience||"all";return aud==="all"||aud==="kitchen_manager"}).length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📅</div><div style={{fontWeight:700}}>No upcoming events.</div></Box>
-          ):events.filter(e=>(!e.school_ids?.length||e.school_ids.includes(mySchool?.id))&&(!e.audience||e.audience==="all"||e.audience==="kitchen_manager")).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
+          ):events.filter(e=>{
+            const aud=e.audience||"all"
+            const audienceOk=aud==="all"||aud==="kitchen_manager"
+            const schoolOk=!e.school_ids?.length||e.school_ids.includes(mySchool?.id)
+            return audienceOk&&(schoolOk||aud==="all"||aud==="kitchen_manager")
+          }).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
             const et=ET[e.type]||ET.other
             return(
               <Box key={e.id} style={{padding:16,borderLeft:"4px solid "+et.color}}>
