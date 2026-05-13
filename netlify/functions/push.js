@@ -6,58 +6,67 @@ const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-webPush.setVapidDetails(
-  'mailto:admin@opsdaily.app',
-  VAPID_PUBLIC,
-  VAPID_PRIVATE
-);
+webPush.setVapidDetails('mailto:admin@opsdaily.app', VAPID_PUBLIC, VAPID_PRIVATE);
+
+const ADMIN_ROLES = ['admin', 'director', 'supervisor', 'chef'];
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
-
   try {
-    const { title, body, school_id, urgent, from_user_id } = JSON.parse(event.body);
+    const { title, body, urgent, from_user_id, audience, notify_school_id } = JSON.parse(event.body);
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Get relevant subscriptions
-    let query = supabase.from('push_subscriptions').select('*');
-    // Don't notify the person who sent it
-    if (from_user_id) query = query.neq('user_id', from_user_id);
-    // If school-specific, get that school's subscribers + admin/directors
-    const { data: subs } = await query;
-    if (!subs || subs.length === 0) return { statusCode: 200, body: 'No subscribers' };
+    // Get all push subscriptions joined with user data
+    const { data: subs } = await supabase.from('push_subscriptions').select('*');
+    if (!subs || !subs.length) return { statusCode: 200, body: 'No subscribers' };
 
-    const payload = JSON.stringify({
-      title: 'Ops Daily — ' + title,
-      body,
-      urgent: urgent || false,
-      url: '/'
+    // Get user roles and school assignments for filtering
+    const userIds = subs.map(s => s.user_id);
+    const { data: users } = await supabase.from('app_users').select('id,role,school_ids').in('id', userIds);
+    const userMap = {};
+    (users || []).forEach(u => userMap[u.id] = u);
+
+    const filtered = subs.filter(sub => {
+      if (sub.user_id === from_user_id) return false;
+      const u = userMap[sub.user_id];
+      if (!u) return false;
+      const role = u.role || 'admin';
+      const schoolIds = u.school_ids || [];
+
+      // Issue notification - filter by school
+      if (notify_school_id) {
+        if (ADMIN_ROLES.includes(role)) return true;
+        if (role === 'kitchen_manager') return schoolIds.includes(notify_school_id);
+        return false;
+      }
+
+      // Announcement - filter by audience
+      if (audience === 'all') return true;
+      if (audience === 'admin_team') return ADMIN_ROLES.includes(role);
+      if (audience === 'kitchen_manager') return role === 'kitchen_manager';
+
+      // Default admin team only
+      return ADMIN_ROLES.includes(role);
     });
 
+    if (!filtered.length) return { statusCode: 200, body: 'No matching subscribers' };
+
+    const payload = JSON.stringify({ title: 'Ops Daily — ' + title, body, urgent: urgent || false, url: '/' });
+
     const results = await Promise.allSettled(
-      subs.map(sub => {
-        try {
-          const subscription = JSON.parse(sub.subscription_data);
-          return webPush.sendNotification(subscription, payload);
-        } catch (e) {
-          return Promise.reject(e);
-        }
+      filtered.map(sub => {
+        try { return webPush.sendNotification(JSON.parse(sub.subscription_data), payload); }
+        catch (e) { return Promise.reject(e); }
       })
     );
 
-    const sent = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.filter(r => r.status === 'rejected').length;
-
-    // Clean up expired subscriptions
-    const expiredIndexes = results.reduce((acc, r, i) => {
-      if (r.status === 'rejected' && r.reason?.statusCode === 410) acc.push(subs[i].id);
+    const expired = results.reduce((acc, r, i) => {
+      if (r.status === 'rejected' && r.reason?.statusCode === 410) acc.push(filtered[i].id);
       return acc;
     }, []);
-    if (expiredIndexes.length) {
-      await supabase.from('push_subscriptions').delete().in('id', expiredIndexes);
-    }
+    if (expired.length) await supabase.from('push_subscriptions').delete().in('id', expired);
 
-    return { statusCode: 200, body: JSON.stringify({ sent, failed }) };
+    return { statusCode: 200, body: JSON.stringify({ sent: results.filter(r => r.status === 'fulfilled').length }) };
   } catch (e) {
     console.error('Push error:', e);
     return { statusCode: 500, body: e.message };

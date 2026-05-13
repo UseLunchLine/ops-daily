@@ -116,12 +116,12 @@ async function requestPushPermission(userId){
 }
 
 
-async function sendPushNotification(title, body, fromUserId, urgent=false){
+async function sendPushNotification(title, body, fromUserId, urgent=false, schoolId=null, audience=null){
   try{
     await fetch('/.netlify/functions/push',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({title,body,from_user_id:fromUserId,urgent})
+      body:JSON.stringify({title,body,from_user_id:fromUserId,urgent,notify_school_id:schoolId,audience})
     })
   }catch(e){console.error('Push send error:',e)}
 }
@@ -577,7 +577,7 @@ function AnnouncementBanner({announcements,userRole,userId}){
     // Save to DB
     try{await supabase.from("announcement_acknowledgments").upsert({id:userId+"_"+ann.id,announcement_id:ann.id,user_id:userId,user_name:"",acknowledged_at:new Date().toISOString()},{onConflict:"announcement_id,user_id",ignoreDuplicates:true})}catch(e){}
   }
-  const visible=announcements.filter(a=>!acked.includes(a.id)&&!(a.expires_at&&new Date(a.expires_at)<new Date()))
+  const visible=announcements.filter(a=>!acked.includes(a.id)&&canSeeAnn(a,userRole)&&!(a.expires_at&&new Date(a.expires_at)<new Date()))
   if(!visible.length)return null
   const ANN_COLORS={general:{color:"#2563EB",bg:"#EFF6FF"},weather:{color:"#0891B2",bg:"#E0F2FE"},closure:{color:"#DC2626",bg:"#FEF2F2"},coverage:{color:"#15803D",bg:"#F0FDF4"},training:{color:"#7C3AED",bg:"#F5F3FF"},urgent:{color:"#B45309",bg:"#FFFBEB"}}
   return(
@@ -658,7 +658,10 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
-      if(p.eventType==='INSERT'){setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5));showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))}
+      if(p.eventType==='INSERT'){
+        if(canSeeAnn(p.new,user?.role))setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
+        if(canSeeAnn(p.new,user?.role))showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))
+      }
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
@@ -2166,22 +2169,21 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         // Only notify if:
         // - Admin team: always notify about new issues
         // - KM: only notify about issues at their own school (not from themselves)
-        // Use refs to get current values (not stale closure)
-        const currentUser=userRef.current
-        const currentSchools=schoolsRef.current
-        const currentIsAdmin=canManageAllRef.current
-        const currentSchoolIds=(supaUsers.find(u=>u.id===currentUser?.id)?.school_ids||[])
-        const isMySchool=currentSchoolIds.includes(p.new.school_id)
-        const isMyIssue=p.new.created_by===currentUser?.id
-        // KMs ONLY get notified about their OWN school
-        // Admin team gets notified about ALL schools
-        const shouldNotify=!isMyIssue&&(currentIsAdmin?true:isMySchool)
-        if(shouldNotify){
-          const sch=currentSchools.find(s=>s.id===p.new.school_id)
+        const _user=userRef.current
+        const _schools=schoolsRef.current
+        const _isAdminTeam=canManageAllRef.current
+        // Get CURRENT school ids from supaUsers (not stale closure)
+        const _mySchoolIds=supaUsers.find(u=>u.id===_user?.id)?.school_ids||[]
+        const _isMyIssue=p.new.created_by===_user?.id
+        const _isMySchool=_mySchoolIds.includes(p.new.school_id)
+        // STRICT: KMs only get notified for their school. Never others.
+        // Admin team gets all notifications.
+        if(!_isMyIssue&&(_isAdminTeam||_isMySchool)){
+          const sch=_schools.find(s=>s.id===p.new.school_id)
           const kit=KIT[p.new.type]?.label||p.new.type
           const prefix=p.new.priority==='urgent'?'🔴 URGENT':'📋 New Issue'
-          showLocalNotification('Ops Daily — '+prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | Reported by '+p.new.created_by_name)
-          if(currentIsAdmin) sendPushNotification(prefix+': '+(sch?.name||'Unknown School'),kit+' — '+p.new.title+' | '+p.new.created_by_name,p.new.created_by,p.new.priority==='urgent')
+          showLocalNotification('Ops Daily — '+prefix+': '+(sch?.name||'Unknown'),kit+' — '+p.new.title+' | '+p.new.created_by_name)
+          if(_isAdminTeam) sendPushNotification(prefix+': '+(sch?.name||'Unknown'),kit+' — '+p.new.title+' | '+p.new.created_by_name,p.new.created_by,p.new.priority==='urgent')
         }
       }
       if(p.eventType==='UPDATE'){
@@ -2191,7 +2193,12 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
     const rt2=supabase.channel(uid2).on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
-      if(p.eventType==='INSERT'){setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)]);showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))}
+      if(p.eventType==='INSERT'){
+        if(canSeeAnn(p.new,user?.role)){
+          setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
+          showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))
+        }
+      }
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
@@ -2204,7 +2211,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   }
   const loadAnnouncements=async()=>{
     const{data}=await supabase.from("announcements").select("*").order("created_at",{ascending:false})
-    if(data)setAnnouncements(data)
+    if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))
   }
   const submitIssue=async()=>{
     if(!form.title.trim()){toast.show("Please add a title.","error");return}
@@ -2267,7 +2274,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     toast.show("Announcement posted!")
     // Send push notification to relevant users
     const audLabel=na.audience==="kitchen_manager"?"Kitchen Managers":na.audience==="admin_team"?"Admin Team":"Everyone"
-    sendPushNotification("📢 New Announcement → "+audLabel, na.title+(na.body?" | "+na.body.slice(0,80):""), user.id, na.type==="urgent")
+    sendPushNotification("📢 New Announcement → "+audLabel, na.title+(na.body?" | "+na.body.slice(0,80):""), user.id, na.type==="urgent", null, na.audience||"all")
   }
 
   const myIssues=canManageAll?issues:issues.filter(i=>userSchoolIds.includes(i.school_id))
@@ -2801,7 +2808,7 @@ function SchoolPills({schoolIds,schools}){
 
 // Announcements tab with KM dismiss (read) button and acknowledgment tracking
 function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,user,schools,supaUsers}){
-  const visibleAnns=announcements
+  const visibleAnns=announcements.filter(a=>canSeeAnn(a,user?.role))
   const [readIds,setReadIds]=useState(()=>{try{return JSON.parse(localStorage.getItem("readAnns")||"[]")}catch{return[]}})
   const [acks,setAcks]=useState([])
   const [showAcks,setShowAcks]=useState(null)
