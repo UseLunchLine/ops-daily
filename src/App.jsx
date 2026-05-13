@@ -2267,6 +2267,24 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   useEffect(()=>{
     loadIssues();loadAnnouncements()
+    // Load unread count - role-aware
+    const loadUnread=()=>{
+      supabase.from('kitchen_messages').select('id,read,from_user_id,reply_to,to_school_id,created_at').then(({data})=>{
+        if(!data) return
+        const _mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
+        const cutoff=new Date(Date.now()-30*24*60*60*1000)
+        const unread=data.filter(m=>{
+          if(m.read||m.reply_to||m.from_user_id===user.id) return false
+          if(new Date(m.created_at)<cutoff) return false
+          // KM: only messages sent to their school or broadcast (no school)
+          if(isKM) return !m.to_school_id||_mySchoolIds.includes(m.to_school_id)
+          // Admin team: all messages
+          return true
+        }).length
+        setUnreadMsgs(unread)
+      })
+    }
+    loadUnread()
     const uid1='kitchen-issues-'+Date.now()
     const uid2='kitchen-anns-'+Date.now()
     const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
@@ -2298,6 +2316,11 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       }
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
+    const uid3='km-msgs-'+Date.now()
+    const rt3=supabase.channel(uid3).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
+      // Update unread badge in realtime
+      if(p.eventType==='INSERT'||p.eventType==='UPDATE') loadUnread()
+    }).subscribe()
     const rt2=supabase.channel(uid2).on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT'){
         if(canSeeAnn(p.new,user?.role)){
@@ -2308,7 +2331,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
-    return()=>{rt1.unsubscribe();rt2.unsubscribe()}
+    return()=>{rt1.unsubscribe();rt2.unsubscribe();rt3.unsubscribe()}
   },[])
 
   const loadIssues=async()=>{
@@ -2390,23 +2413,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   // KM tabs: Report, Announcements, Inbox
   // Others: Issues, Announcements, Send Message
   // Compute unread from supabase on mount - use a simple local state
-  const [unreadMsgs,setUnreadMsgs]=React.useState(0)
-  React.useEffect(()=>{
-    supabase.from('kitchen_messages').select('id,read,to_school_id,from_user_id,reply_to,created_at').then(({data})=>{
-      if(!data) return
-      const mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
-      const sevenDaysAgo=new Date(Date.now()-7*24*60*60*1000).toISOString()
-      // Only count recent unread messages (last 30 days) not sent by me
-      const unread=data.filter(m=>{
-        if(m.from_user_id===user.id) return false
-        if(m.reply_to) return false // don't count replies separately
-        if(new Date(m.created_at)<new Date(Date.now()-30*24*60*60*1000)) return false
-        if(isKM) return !m.to_school_id||mySchoolIds.includes(m.to_school_id)
-        return true
-      }).filter(m=>!m.read).length
-      setUnreadMsgs(unread)
-    })
-  },[supaUsers])
+  const [unreadMsgs,setUnreadMsgs]=useState(0)
   const kmTabs=[
     {id:"report",label:"📋 Report Issue"},
     {id:"issues",label:"🔴 Issues"+(myIssues.filter(i=>i.status!=="resolved").length>0?" ("+myIssues.filter(i=>i.status!=="resolved").length+")":"")},
@@ -2445,6 +2452,62 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
           <div style={{color:"rgba(255,255,255,.6)",fontSize:20}}>›</div>
         </div>
       )}
+
+      {/* Quick Access Cards */}
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(3,1fr)",gap:10,marginBottom:20}}>
+        {/* Announcements card */}
+        <div onClick={()=>setTabAndSave("announcements")} style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(37,99,235,.22)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>📢</div>
+            <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Announcements</span>
+            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{announcements.filter(a=>canSeeAnn(a,user?.role)).length}</span>}
+          </div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0?announcements.filter(a=>canSeeAnn(a,user?.role))[0].title:"No active announcements"}
+          </div>
+        </div>
+
+        {/* Messages card */}
+        <div onClick={()=>setTabAndSave("inbox")} style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(124,58,237,.2)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>💬</div>
+            <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Messages</span>
+            {unreadMsgs>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{unreadMsgs}</span>}
+          </div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5}}>
+            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":""):"No unread messages"}
+          </div>
+        </div>
+
+        {/* Calendar / Issues card depending on role */}
+        {isKM?(
+          <div onClick={()=>setTabAndSave("calendar")} style={{background:"linear-gradient(135deg,#0D9488,#0F766E)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(13,148,136,.2)",position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>📅</div>
+              <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Calendar</span>
+              {events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager")).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager")).length}</span>}
+            </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+              {events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager")).sort((a,b)=>a.date.localeCompare(b.date))[0]?fd(events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager"))[0].date)+" — "+events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager"))[0].title:"No upcoming events"}
+            </div>
+          </div>
+        ):(
+          <div onClick={()=>setTabAndSave("issues")} style={{background:"linear-gradient(135deg,#DC2626,#B91C1C)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(220,38,38,.2)",position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>🔴</div>
+              <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Open Issues</span>
+              {openIssues.length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{openIssues.length}</span>}
+            </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5}}>
+              {openIssues.filter(i=>i.priority==="urgent").length>0?openIssues.filter(i=>i.priority==="urgent").length+" urgent issue"+(openIssues.filter(i=>i.priority==="urgent").length!==1?"s":"")+" need attention":openIssues.length>0?openIssues.length+" open issue"+(openIssues.length!==1?"s":""):"No open issues"}
+            </div>
+          </div>
+        )}
+      </div>
 
       {canManageAll&&(
         <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(4,1fr)",gap:10,marginBottom:20}}>
@@ -2754,6 +2817,12 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
     const rt=supabase.channel(rtId).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
       if(p.eventType==='INSERT'){
         setMessages(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
+        // Update unread count - only if message is for me
+        if(p.new.from_user_id!==user?.id){
+          const myIds=(supaUsers.find(u=>u.id===user?.id)?.school_ids||[])
+          const isForMe=isKM?(!p.new.to_school_id||myIds.includes(p.new.to_school_id)):true
+          if(isForMe&&!p.new.read)setUnreadMsgs(n=>n+1)
+        }
         // Only notify if message is FROM someone else AND is directed to my school or all kitchens
         const mySchoolIds=supaUsers.find(u=>u.id===user?.id)?.school_ids||[]
         const isForMe=!p.new.to_school_id||mySchoolIds.includes(p.new.to_school_id)
@@ -2766,7 +2835,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
           sendPushNotification(msgTitle, msgBody, p.new.from_user_id, false)
         }
       }
-      if(p.eventType==='UPDATE')setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
+      if(p.eventType==='UPDATE'){setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x));if(p.new.read&&!p.old?.read)setUnreadMsgs(n=>Math.max(0,n-1))}
       if(p.eventType==='DELETE')setMessages(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
     return()=>rt.unsubscribe()
