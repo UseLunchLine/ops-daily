@@ -409,7 +409,7 @@ export default function App(){
     if(!allowed.includes(page)){
       const defaultPg=ROLE_DEFAULT[user?.role||"admin"]||"dashboard"
       setTimeout(()=>{setPage(defaultPg);sessionStorage.setItem('ops_page',defaultPg)},0)
-      if(user?.role==="kitchen_manager") return <KitchenPage {...props} setEvents={setEvents}/>
+      if(user?.role==="kitchen_manager") return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go}/>
       return <DashPage {...props}/>
     }
     if(page==="dashboard")return <DashPage {...props}/>
@@ -421,7 +421,7 @@ export default function App(){
     if(page==="events")return <EventsPage {...props}/>
     if(page==="stats")return <StatsPage {...props}/>
     if(page==="checklist")return <ChecklistPage {...props}/>
-    if(page==="kitchen")return <KitchenPage {...props} setEvents={setEvents}/>
+    if(page==="kitchen")return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go}/>
     if(page==="admin") return <AdminPage {...props}/>
     return <DashPage {...props}/>
   }
@@ -2164,17 +2164,8 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   useEffect(()=>{
     loadIssues();loadAnnouncements()
-    const uid0='kit-events-'+Date.now()
     const uid1='kitchen-issues-'+Date.now()
     const uid2='kitchen-anns-'+Date.now()
-    // Events realtime for KM calendar
-    const evCh=supabase.channel(uid0).on('postgres_changes',{event:'*',schema:'public',table:'events'},p=>{
-      if(setEvents){
-        if(p.eventType==='INSERT')setEvents(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
-        if(p.eventType==='UPDATE')setEvents(prev=>prev.map(x=>x.id===p.new.id?{...x,...p.new}:x))
-        if(p.eventType==='DELETE')setEvents(prev=>prev.filter(x=>x.id!==p.old?.id))
-      }
-    }).subscribe()
     const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
       if(p.eventType==='INSERT'){
         setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
@@ -2214,7 +2205,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
-    return()=>{evCh.unsubscribe();rt1.unsubscribe();rt2.unsubscribe()}
+    return()=>{rt1.unsubscribe();rt2.unsubscribe()}
   },[])
 
   const loadIssues=async()=>{
@@ -2294,12 +2285,25 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const resolvedIssues=myIssues.filter(i=>i.resolved)
   // KM tabs: Report, Announcements, Inbox
   // Others: Issues, Announcements, Send Message
-  const unreadMsgs=0 // loaded inside KitchenMessagesTab
+  // Compute unread from supabase on mount - use a simple local state
+  const [unreadMsgs,setUnreadMsgs]=React.useState(0)
+  React.useEffect(()=>{
+    supabase.from('kitchen_messages').select('id,read,to_school_id,from_user_id').then(({data})=>{
+      if(!data) return
+      const mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
+      const unread=data.filter(m=>{
+        if(m.from_user_id===user.id) return false
+        if(isKM) return mySchoolIds.includes(m.to_school_id)||(!m.to_school_id&&m.from_user_id!==user.id)
+        return true
+      }).filter(m=>!m.read).length
+      setUnreadMsgs(unread)
+    })
+  },[supaUsers])
   const kmTabs=[
     {id:"report",label:"📋 Report Issue"},
     {id:"issues",label:"🔴 Issues"+(myIssues.filter(i=>i.status!=="resolved").length>0?" ("+myIssues.filter(i=>i.status!=="resolved").length+")":"")},
     {id:"announcements",label:"📢 Announcements"},
-    {id:"inbox",label:"💬 New Messages"},
+    {id:"inbox",label:"💬 Messages"+(unreadMsgs>0?" ("+unreadMsgs+")":"")},
     {id:"inbox_prev",label:"📂 Previous"},
     {id:"calendar",label:"📅 Calendar"},
   ]
@@ -2328,7 +2332,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
           <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>📢</div>
           <div style={{flex:1}}>
             <div style={{fontWeight:800,fontSize:13,color:"#fff",marginBottom:2}}>{announcements[0].title}</div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,.75)"}}>Latest announcement · tap to see all {announcements.length}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.75)"}}>Latest announcement · tap to see all {announcements.length} →</div>
           </div>
           <div style={{color:"rgba(255,255,255,.6)",fontSize:20}}>›</div>
         </div>
