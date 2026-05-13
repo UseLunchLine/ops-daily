@@ -364,10 +364,10 @@ export default function App(){
   const [ctx,setCtx]=useState(null)
   const [sideOpen,setSideOpen]=useState(false)
   const [menuOpen,setMenuOpen]=useState(false)
-  const go=(pg,ctx=null)=>{
+  const go=(pg,navCtx=null)=>{
     const allowed=ROLE_PAGE_MAP[user?.role||"admin"]||ROLE_PAGE_MAP.admin
     const target=allowed.includes(pg)?pg:(ROLE_DEFAULT[user?.role||"admin"]||"dashboard")
-    setPage(target);sessionStorage.setItem('ops_page',target);if(ctx)setCtx(ctx)
+    setPage(target);sessionStorage.setItem('ops_page',target);if(navCtx)setCtx(navCtx);else setCtx(null)
   }
   const [mobile,setMobile]=useState(window.innerWidth<768)
   const toast=useToast()
@@ -737,7 +737,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
       {/* Quick Access Cards - front and center */}
       <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(3,1fr)",gap:12,marginBottom:20}}>
         {/* Announcements Card */}
-        <div onClick={()=>go("kitchen",{tab:"announcements"})} style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(37,99,235,.25)",position:"relative",overflow:"hidden"}}>
+        <div onClick={()=>{sessionStorage.setItem("kitchen_tab","announcements");go("kitchen")}} style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(37,99,235,.25)",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
             <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📢</div>
@@ -753,7 +753,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
         </div>
 
         {/* Calendar Card */}
-        <div onClick={()=>go("events")} style={{background:"linear-gradient(135deg,#0D9488,#0F766E)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(13,148,136,.22)",position:"relative",overflow:"hidden"}}>
+        <div onClick={()=>{if(user?.role==="kitchen_manager"){sessionStorage.setItem("kitchen_tab","calendar");go("kitchen")}else go("events")}} style={{background:"linear-gradient(135deg,#0D9488,#0F766E)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(13,148,136,.22)",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
             <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📅</div>
@@ -769,7 +769,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
         </div>
 
         {/* Messages Card */}
-        <div onClick={()=>go("kitchen",{tab:"inbox"})} style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(124,58,237,.22)",position:"relative",overflow:"hidden"}}>
+        <div onClick={()=>{sessionStorage.setItem("kitchen_tab","inbox");go("kitchen")}} style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(124,58,237,.22)",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
             <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>💬</div>
@@ -2249,7 +2249,6 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   // If KM accessed via announcements route, show announcements only
   const [tab,setTab]=useState(()=>{
     const saved=sessionStorage.getItem("kitchen_tab")
-    if(ctx?.tab){sessionStorage.setItem("kitchen_tab",ctx.tab);return ctx.tab}
     if(saved) return saved
     return kmAnnouncementsOnly?"announcements":isKM?"report":"issues"
   })
@@ -2257,7 +2256,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   const [announcements,setAnnouncements]=useState([])
   const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
   const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",expires_at:"",due_date:"",audience:"all"})
-  const setTabAndSave=(t)=>{setTabAndSave(t);sessionStorage.setItem("kitchen_tab",t)}
+  const setTabAndSave=(t)=>{setTab(t);sessionStorage.setItem("kitchen_tab",t)}
   const [annModal,setAnnModal]=useState(false)
   const [loading,setLoading]=useState(false)
   const [mobile,setMobile]=useState(window.innerWidth<768)
