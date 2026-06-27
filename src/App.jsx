@@ -538,7 +538,6 @@ function Login(){
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><img src="/logo.png" alt="Ops Daily" style={{height:56,width:"auto",maxWidth:200,objectFit:"contain"}}/></div>
-          <h1 style={{fontSize:26,fontWeight:900,color:C.text,margin:"0 0 4px"}}>Ops Daily</h1>
           <p style={{fontSize:13,color:C.textMuted,margin:0}}>South Bend Community School Corporation</p>
         </div>
         <Box style={{boxShadow:SH.lg,borderRadius:R.xl,padding:24}}>
