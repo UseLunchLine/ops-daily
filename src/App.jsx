@@ -537,7 +537,7 @@ function Login(){
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#EFF6FF 0%,#F5F3FF 100%)",padding:16,fontFamily:"system-ui,sans-serif"}}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><img src="/logo.png" alt="Ops Daily" style={{width:56,height:56,borderRadius:16,boxShadow:"0 8px 24px rgba(59,130,246,.3)"}}/></div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><img src="/logo.png" alt="Ops Daily" style={{height:56,width:"auto",maxWidth:200,objectFit:"contain"}}/></div>
           <h1 style={{fontSize:26,fontWeight:900,color:C.text,margin:"0 0 4px"}}>Ops Daily</h1>
           <p style={{fontSize:13,color:C.textMuted,margin:0}}>South Bend Community School Corporation</p>
         </div>
@@ -667,12 +667,34 @@ function AlertsBtn({userId}){
 }
 
 
-function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin,events=[],supaUsers=[]}){  
+function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAdmin,events=[],supaUsers=[]}){
+  const supaUsersRef=React.useRef(supaUsers)
+  React.useEffect(()=>{supaUsersRef.current=supaUsers},[supaUsers])
   const [announcements,setAnnouncements]=useState([])
   const [unreadMsgs,setUnreadMsgs]=useState(0)
   const isKMDash=user?.role==="kitchen_manager"
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
+    // Load unread message count
+    const loadUnread=()=>{
+      supabase.from('kitchen_messages').select('id,read,from_user_id,reply_to,created_at,to_school_id').then(({data})=>{
+        if(!data) return
+        const isKM=user?.role==='kitchen_manager'
+        const mySchoolIds=(supaUsersRef.current.find(u=>u.id===user?.id)?.school_ids||[])
+        const cutoff=new Date(Date.now()-30*24*60*60*1000)
+        const unread=data.filter(m=>{
+          if(m.read||m.reply_to||m.from_user_id===user?.id) return false
+          if(new Date(m.created_at)<cutoff) return false
+          if(isKM) return !m.to_school_id||mySchoolIds.includes(m.to_school_id)
+          return true
+        }).length
+        setUnreadMsgs(unread)
+      })
+    }
+    loadUnread()
+    const rtMsgs=supabase.channel('dash-msgs-rt-'+user?.id).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
+      if(p.eventType==='INSERT'||p.eventType==='UPDATE') loadUnread()
+    }).subscribe()
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT'){
         if(canSeeAnn(p.new,user?.role))setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,5))
@@ -681,7 +703,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==='DELETE')setAnnouncements(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
-    return()=>rt.unsubscribe()
+    return()=>{rt.unsubscribe();rtMsgs.unsubscribe()}
   },[])
   const [dateFrom,setDateFrom]=useState(()=>sessionStorage.getItem('dash_from')||TODAY)
   const [dateTo,setDateTo]=useState(()=>sessionStorage.getItem('dash_to')||TODAY)
@@ -777,7 +799,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
             {unreadMsgs>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{unreadMsgs}</span>}
           </div>
           <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
-            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":""):"No unread messages"}
+            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":""):"All caught up"}
           </div>
           <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to open →</div>
         </div>
@@ -1729,7 +1751,13 @@ function AdminAnnouncementsTab({toast,schools}){
     }).subscribe()
     return()=>rt.unsubscribe()
   },[])
-  const del=async(id)=>{if(!window.confirm("Delete this announcement?"))return;await supabase.from("announcements").delete().eq("id",id);setAnns(p=>p.filter(x=>x.id!==id));toast.show("Deleted.")}
+  const del=async(id)=>{
+    if(!window.confirm("Delete this announcement?"))return
+    const{error}=await supabase.from("announcements").delete().eq("id",id)
+    if(error){toast.show("Could not delete: "+error.message,"error");console.error('Delete announcement error:',error);return}
+    setAnns(p=>p.filter(x=>x.id!==id))
+    toast.show("Deleted.")
+  }
   if(loading) return <Box style={{padding:40,textAlign:"center",color:C.textMuted}}>Loading...</Box>
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -2311,8 +2339,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         }
       }
       if(p.eventType==='UPDATE'){
-        console.log('Issue updated realtime:',p.new.id,p.new.status)
-        setIssues(prev=>prev.map(x=>x.id===p.new.id?{...x,...p.new}:x))
+        if(p.new&&p.new.id) setIssues(prev=>prev.map(x=>x.id===p.new.id?{...x,...p.new}:x))
       }
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
@@ -2326,6 +2353,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         if(canSeeAnn(p.new,user?.role)){
           setAnnouncements(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
           showLocalNotification('Ops Daily — 📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''))
+          sendPushNotification('📢 New Announcement',p.new.title+(p.new.body?' | '+p.new.body.slice(0,80):''),p.new.created_by,p.new.type==='urgent',null,p.new.audience||'all')
         }
       }
       if(p.eventType==='UPDATE')setAnnouncements(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
@@ -2365,13 +2393,18 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   }
 
   const updateStatus=async(issue,newStatus,note="")=>{
-    const update={status:newStatus,resolved:newStatus==="resolved"}
-    if(newStatus==="acknowledged"){update.acknowledged_by=user.id;update.acknowledged_by_name=user.name||user.email;update.acknowledged_at=new Date().toISOString()}
-    if(newStatus==="in_progress"){update.in_progress_by=user.id;update.in_progress_by_name=user.name||user.email}
-    if(newStatus==="resolved"){update.resolution_note=note;update.resolved_at=new Date().toISOString();update.resolved_by=user.id;update.resolved_by_name=user.name||user.email}
-    await supabase.from("kitchen_issues").update(update).eq("id",issue.id)
-    setIssues(p=>p.map(x=>x.id===issue.id?{...x,...update}:x))
-    toast.show(ISSUE_STATUS[newStatus]?.label+" ✓")
+    try{
+      const update={status:newStatus,resolved:newStatus==="resolved"}
+      if(newStatus==="acknowledged"){update.acknowledged_by=user.id;update.acknowledged_by_name=user.name||user.email;update.acknowledged_at=new Date().toISOString()}
+      if(newStatus==="in_progress"){update.in_progress_by=user.id;update.in_progress_by_name=user.name||user.email}
+      if(newStatus==="resolved"){update.resolution_note=note||"" ;update.resolved_at=new Date().toISOString();update.resolved_by=user.id;update.resolved_by_name=user.name||user.email}
+      // Update local state immediately - no waiting for DB
+      setIssues(p=>p.map(x=>x.id===issue.id?{...x,...update}:x))
+      const{error}=await supabase.from("kitchen_issues").update(update).eq("id",issue.id)
+      if(error){toast.show("Update failed: "+error.message,"error");return}
+      const labels={open:"Open",acknowledged:"Acknowledged",in_progress:"In Progress",resolved:"Resolved"}
+      toast.show((labels[newStatus]||newStatus)+" ✓")
+    }catch(err){toast.show("Something went wrong","error");console.error(err)}
   }
 
   const resolveIssue=async(issue,note)=>updateStatus(issue,"resolved",note)
@@ -2533,13 +2566,17 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       <TabBar tabs={isKM?kmTabs:staffTabs} active={tab} set={setTab}/>
 
       {/* REPORT ISSUE - KM only */}
-      {tab==="report"&&isKM&&(
+      {tab==="report"&&(
         <div style={{maxWidth:580,display:"flex",flexDirection:"column",gap:14}}>
           <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:R.md,padding:"12px 16px",fontSize:13,color:"#92400E",display:"flex",gap:10}}>
             <span style={{fontSize:18,flexShrink:0}}>⏰</span>
             <span><strong>Reminder:</strong> Time off requests must still be submitted on the kitchen computer time clock system. This form is for operational issues only.</span>
           </div>
-          {mySchool&&<div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#0369A1"}}>📍 Reporting for: {mySchool.name}</div>}
+          {isKM?(
+            mySchool&&<div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#0369A1"}}>📍 Reporting for: {mySchool.name}</div>
+          ):(
+            <Box style={{padding:"14px 16px"}}><L>School *</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></Box>
+          )}
           <Box style={{display:"flex",flexDirection:"column",gap:14}}>
             <div>
               <L>Issue Type</L>
@@ -2821,7 +2858,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
         if(p.new.from_user_id!==user?.id){
           const myIds=(supaUsers.find(u=>u.id===user?.id)?.school_ids||[])
           const isForMe=isKM?(!p.new.to_school_id||myIds.includes(p.new.to_school_id)):true
-          if(isForMe&&!p.new.read)setUnreadMsgs(n=>n+1)
+          // unread count is derived reactively from `messages` below — no local counter needed here
         }
         // Only notify if message is FROM someone else AND is directed to my school or all kitchens
         const mySchoolIds=supaUsers.find(u=>u.id===user?.id)?.school_ids||[]
@@ -2835,7 +2872,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
           sendPushNotification(msgTitle, msgBody, p.new.from_user_id, false)
         }
       }
-      if(p.eventType==='UPDATE'){setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x));if(p.new.read&&!p.old?.read)setUnreadMsgs(n=>Math.max(0,n-1))}
+      if(p.eventType==='UPDATE'){setMessages(prev=>prev.map(x=>x.id===p.new.id?p.new:x))}
       if(p.eventType==='DELETE')setMessages(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
     return()=>rt.unsubscribe()
@@ -3062,7 +3099,7 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
                   {isRead&&isKM&&<Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">✓ Read</Pill>}
                   <span style={{fontSize:11,color:C.textLight}}>{fd(ann.created_at?.slice(0,10)||TODAY)}</span>
                   {ann.created_by_name&&<span style={{fontSize:11,color:C.textLight}}>by {ann.created_by_name}</span>}
-                  {ann.audience&&ann.audience!=="all"&&<Pill bg={ann.audience==="kitchen_manager"?"#F0FDF4":"#EFF6FF"} tx={ann.audience==="kitchen_manager"?"#15803D":"#1D4ED8"}>{ann.audience==="kitchen_manager"?"🍳 Kitchen Mgrs":"👔 Admin Team"}</Pill>}
+                  
                   {ann.expires_at&&<span style={{fontSize:11,color:C.textLight}}>· expires {fd(ann.expires_at)}</span>}
                 </div>
                 <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:6}}>{ann.title}</div>
