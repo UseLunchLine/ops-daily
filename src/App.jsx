@@ -45,6 +45,7 @@ const TODAY=new Date().toISOString().slice(0,10)
 const uid=()=>Math.random().toString(36).slice(2,8)
 const fd=d=>new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
 const ft=ts=>new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})
+const fdt=ts=>ts?new Date(ts).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):""
 const fmt=t=>{if(!t)return "";const[h,m]=t.split(":");const hr=parseInt(h);return(hr===0?12:hr>12?hr-12:hr)+":"+m+(hr<12?" AM":" PM")}
 
 
@@ -153,7 +154,7 @@ function showLocalNotification(title,body){
 }
 async function callAI(messages,systemPrompt=""){
   try{
-    const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,...(systemPrompt?{system:systemPrompt}:{}),messages})})
+    const res=await fetch("/.netlify/functions/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,...(systemPrompt?{system:systemPrompt}:{}),messages})})
     const data=await res.json()
     return data.content?.[0]?.text||null
   }catch{return null}
@@ -262,13 +263,15 @@ function ResolveModal({recap,onClose,onResolve}){
 
 
 const ROLE_PAGE_MAP={
-  admin:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","admin","stats","checklist"],
+  admin:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","admin","stats","checklist","auditlog"],
   director:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],
   supervisor:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","stats","checklist"],
   chef:["dashboard","submit","schools","calloffs","kitchen","events","map","directory","checklist"],
   kitchen_manager:["kitchen","checklist","directory"],
 }
 const ROLE_DEFAULT={admin:"dashboard",director:"dashboard",supervisor:"dashboard",chef:"dashboard",kitchen_manager:"kitchen"}
+const getCustomPerms=()=>{try{return JSON.parse(localStorage.getItem("customPerms")||"{}")}catch{return{}}}
+const getAllowedPages=(role)=>{const cp=getCustomPerms();return cp[role]||ROLE_PAGE_MAP[role]||ROLE_PAGE_MAP.admin}
 
 export default function App(){
   const [users]=useState(SU)
@@ -286,7 +289,7 @@ export default function App(){
     supabase.auth.getSession().then(({data:{session}})=>{
       if(session?.user){
         supabase.from("app_users").select("*").eq("id",session.user.id).maybeSingle().then(({data})=>{
-          setUser({id:session.user.id,name:data?.name||session.user.email.split("@")[0],email:session.user.email,role:data?.role||"admin",school_ids:data?.school_ids||[],is_active:true})
+          setUser({id:session.user.id,name:data?.name||session.user.email.split("@")[0],email:session.user.email,role:data?.role||"admin",school_ids:data?.school_ids||[],is_active:data?.is_active!==false})
         }).catch(()=>{
           setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true,school_ids:[]})
         }).finally(()=>setAuthLoading(false))
@@ -299,7 +302,7 @@ export default function App(){
       if(event==="SIGNED_OUT"){setUser(null);return}
       if(event==="SIGNED_IN"&&session?.user){
         supabase.from("app_users").select("*").eq("id",session.user.id).maybeSingle().then(({data})=>{
-          setUser({id:session.user.id,name:data?.name||session.user.email.split("@")[0],email:session.user.email,role:data?.role||"admin",school_ids:data?.school_ids||[],is_active:true})
+          setUser({id:session.user.id,name:data?.name||session.user.email.split("@")[0],email:session.user.email,role:data?.role||"admin",school_ids:data?.school_ids||[],is_active:data?.is_active!==false})
           setAuthLoading(false)
         }).catch(()=>{
           setUser({id:session.user.id,name:session.user.email.split("@")[0],email:session.user.email,role:"admin",is_active:true,school_ids:[]})
@@ -334,6 +337,7 @@ export default function App(){
       setDbReady(true)
     }
     loadData()
+    supabase.from("app_settings").select("*").eq("id","custom_perms").maybeSingle().then(({data})=>{if(data&&data.value){try{localStorage.setItem("customPerms",JSON.stringify(data.value))}catch{}}}).catch(()=>{})
   },[])
 
   // Realtime subscriptions in their own useEffect so they properly clean up
@@ -365,13 +369,15 @@ export default function App(){
   const [sideOpen,setSideOpen]=useState(false)
   const [menuOpen,setMenuOpen]=useState(false)
   const go=(pg,navCtx=null)=>{
-    const allowed=ROLE_PAGE_MAP[user?.role||"admin"]||ROLE_PAGE_MAP.admin
+    const allowed=getAllowedPages(user?.role||"admin")
     const target=allowed.includes(pg)?pg:(ROLE_DEFAULT[user?.role||"admin"]||"dashboard")
     setPage(target);sessionStorage.setItem('ops_page',target);if(navCtx)setCtx(navCtx);else setCtx(null)
   }
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   const toast=useToast()
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
+  // Reload if the calendar date changes while the tab stays open (kitchen displays left on overnight)
+  useEffect(()=>{const iv=setInterval(()=>{if(new Date().toISOString().slice(0,10)!==TODAY)window.location.reload()},60000);return()=>clearInterval(iv)},[])
 
   if(authLoading)return(
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748B",gap:12,background:"#F8FAFC"}}>
@@ -382,6 +388,14 @@ export default function App(){
     </div>
   )
   if(!user)return <Login/>
+  if(user.is_active===false)return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,fontFamily:"system-ui",background:"#F8FAFC",padding:20,textAlign:"center"}}>
+      <div style={{fontSize:40}}>🔒</div>
+      <div style={{fontWeight:800,fontSize:18,color:"#0F172A"}}>Account Deactivated</div>
+      <div style={{fontSize:13,color:"#64748B",maxWidth:360}}>Your Ops Daily account has been deactivated. Contact your administrator if you believe this is a mistake.</div>
+      <button onClick={()=>supabase.auth.signOut()} style={{padding:"10px 20px",borderRadius:12,border:"1px solid #E2E8F0",background:"#fff",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>Sign Out</button>
+    </div>
+  )
   const isKM=user.role==="kitchen_manager"
   const perms={submit:!isKM,report:user.role!=="chef"&&!isKM,calloffs:user.role!=="chef"&&!isKM,directory:true,admin:user.role==="admin",kitchen:true}
   const sById=id=>schools.find(s=>s.id===id)
@@ -399,13 +413,14 @@ export default function App(){
     {id:"map",label:"School Map",short:"Map",I:Map},
     {id:"directory",label:"Staff Directory",short:"Directory",I:BookOpen},
     {id:"admin",label:"Admin Panel",short:"Admin",I:ShieldCheck},
+    {id:"auditlog",label:"Audit Log",short:"Audit",I:Eye},
   ]
-  const navItems=ALL_NAV_ITEMS.filter(n=>(ROLE_PAGE_MAP[user?.role||"admin"]||ROLE_PAGE_MAP.admin).includes(n.id))
+  const navItems=ALL_NAV_ITEMS.filter(n=>getAllowedPages(user?.role||"admin").includes(n.id))
 
   const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,events,setEvents,go,sById,uById,ctx,isAdmin:perms.admin}
 
   const PageEl=()=>{
-    const allowed=ROLE_PAGE_MAP[user?.role||"admin"]||ROLE_PAGE_MAP.admin
+    const allowed=getAllowedPages(user?.role||"admin")
     if(!allowed.includes(page)){
       const defaultPg=ROLE_DEFAULT[user?.role||"admin"]||"dashboard"
       setTimeout(()=>{setPage(defaultPg);sessionStorage.setItem('ops_page',defaultPg)},0)
@@ -423,6 +438,7 @@ export default function App(){
     if(page==="checklist")return <ChecklistPage {...props}/>
     if(page==="kitchen")return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go} ctx={ctx}/>
     if(page==="admin") return <AdminPage {...props}/>
+    if(page==="auditlog") return <AuditPage {...props}/>
     return <DashPage {...props}/>
   }
 
@@ -580,9 +596,7 @@ function AnnouncementBanner({announcements,userRole,userId}){
     supabase.from("announcement_acknowledgments").select("announcement_id").eq("user_id",userId).then(({data})=>{
       if(data&&data.length){
         const dbAcked=data.map(a=>a.announcement_id)
-        const merged=[...new Set([...acked,...dbAcked])]
-        setAcked(merged)
-        try{localStorage.setItem("ackedAnns",JSON.stringify(merged))}catch{}
+        setAcked(prev=>{const merged=[...new Set([...prev,...dbAcked])];try{localStorage.setItem("ackedAnns",JSON.stringify(merged))}catch{};return merged})
       }
     })
   },[userId])
@@ -714,7 +728,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   const setSchool=(v)=>{setFSchool(v);sessionStorage.setItem('dash_school',v)}
   const setStatus=(v)=>{setFStatus(v);sessionStorage.setItem('dash_status',v)}
   const [on,setOn]=useState(new Set())
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   const [resolveId,setResolveId]=useState(null)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
@@ -782,9 +796,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
             {events.filter(e=>e.date>=TODAY).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY).length}</span>}
           </div>
           <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
-            {events.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date))[0]
-              ?fd(events.filter(e=>e.date>=TODAY)[0].date)+" — "+events.filter(e=>e.date>=TODAY)[0].title
-              :"No upcoming events"}
+            {(()=>{const up=events.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date));return up[0]?fd(up[0].date)+" — "+up[0].title:"No upcoming events"})()}
           </div>
           <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view →</div>
         </div>
@@ -944,7 +956,7 @@ function SubmitPage({user,schools,setRecaps,toast}){
   const [aiLoading,setAiLoading]=useState(false)
 
   const tog=id=>setSel(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])
-  const addC=()=>{const v=ci.trim();if(!v)return;if(!cust.includes(v))setCust(p=>[...p,v]);setCi("")}
+  const addC=()=>{const v=ci.trim().slice(0,80);if(!v)return;if(!cust.includes(v))setCust(p=>[...p,v]);setCi("")}
 
   const draftNote=async()=>{
     if(!status){setErr("Select a status first.");return}
@@ -991,7 +1003,7 @@ function SubmitPage({user,schools,setRecaps,toast}){
           </div>
           {cust.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>{cust.map(c=><span key={c} style={{background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#2563EB",padding:"3px 8px",borderRadius:R.full,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>{c}<button onClick={()=>setCust(p=>p.filter(x=>x!==c))} style={{background:"none",border:"none",cursor:"pointer",color:"inherit",display:"flex",padding:0}}><X size={10}/></button></span>)}</div>}
           <div style={{display:"flex",gap:8,marginTop:10}}>
-            <input value={ci} onChange={e=>setCi(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(e.preventDefault(),addC())} placeholder="Add custom issue..." style={{...inp,flex:1}}/>
+            <input value={ci} maxLength={80} onChange={e=>setCi(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(e.preventDefault(),addC())} placeholder="Add custom issue..." style={{...inp,flex:1}}/>
             <Btn onClick={addC} disabled={!ci.trim()} sm><Plus size={12}/>Add</Btn>
           </div>
         </Box>
@@ -1018,7 +1030,7 @@ function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin,noHea
   const tc=sch?TC[sch.type]:null
   const sn=role=>{const id=sch?.[`${role}_id`];return id?uById(id)?.name:null}
   const tog=id=>setOn(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n})
-  const handleResolve=(rid,note)=>{setRecaps(p=>p.map(x=>x.id===rid?{...x,resolved:true,resolution_note:note,resolved_at:new Date().toISOString()}:x));toast.show("Issue marked as resolved!")}
+  const handleResolve=async(rid,note)=>{setRecaps(p=>p.map(x=>x.id===rid?{...x,resolved:true,resolution_note:note,resolved_at:new Date().toISOString()}:x));const{error}=await supabase.from("recaps").update({resolved:true,resolution_note:note}).eq("id",rid);if(error){toast.show("Save failed: "+error.message,"error");return}toast.show("Issue marked as resolved!")}
   const handleDeleteRecap=async(r)=>{
     const canDelete=isAdmin||r.created_by===user.id
     if(!canDelete){toast.show("You can only delete your own recaps.","error");return}
@@ -1119,6 +1131,7 @@ function ReportPage({recaps,schools,users,noHeader=false}){
         </div>
       </div>`).join("")
     const win=window.open("","_blank")
+    if(!win){alert("Pop-up blocked. Please allow pop-ups for this site to print the report.");return}
     win.document.write(`<!DOCTYPE html><html><head><title>Monthly Report - ${monthName}</title><style>body{font-family:system-ui,sans-serif;padding:32px;max-width:800px;margin:0 auto;color:#1E293B;}h1{font-size:22px;font-weight:900;margin-bottom:4px;}h2{font-size:14px;font-weight:500;color:#64748B;margin-bottom:24px;}@media print{body{padding:16px;}}</style></head><body><h1>Monthly Report — ${monthName}</h1><h2>South Bend Community School Corporation · Food Service Operations</h2>${rows}<script>window.onload=()=>window.print()<\/script></body></html>`)
     win.document.close()
   }
@@ -1177,10 +1190,11 @@ function ReportPage({recaps,schools,users,noHeader=false}){
 }
 
 function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
   const [tab,setTab]=useState("log")
   const [form,setForm]=useState({school_id:"",staff_name:"",staff_role:"",type:"calloff",note:"",date:TODAY})
+  const [manualName,setManualName]=useState(false)
   const [err,setErr]=useState("")
   const [fS,setFS]=useState("")
   const [fT,setFT]=useState("")
@@ -1202,18 +1216,21 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
 
   const handleStaffSelect=(e)=>{
     const name=e.target.value
+    if(name==="__manual__"){setManualName(true);setForm(f=>({...f,staff_name:"",staff_role:""}));return}
+    setManualName(false)
     const staffMember=directory.find(d=>d.name===name)
     setForm(f=>({...f,staff_name:name,staff_role:staffMember?.position||f.staff_role}))
   }
 
   const sub=async()=>{
     if(!form.school_id){setErr("Select a school.");return}
-    if(!form.staff_name.trim()){setErr("Enter staff name.");return}
+    if(!form.staff_name.trim()||form.staff_name==="__manual__"){setErr("Enter staff name.");return}
     setErr("")
     const newCalloff={id:uid(),...form,staff_name:form.staff_name.trim(),created_by:user.id,created_at:new Date().toISOString()}
     setCalloffs(p=>[newCalloff,...p])
     await supabase.from("calloffs").insert(newCalloff)
     setForm({school_id:"",staff_name:"",staff_role:"",type:"calloff",note:"",date:TODAY})
+    setManualName(false)
     toast.show("Call-off logged successfully!")
   }
 
@@ -1230,7 +1247,7 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
           <div><L>School *</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></div>
           <div>
             <L>Staff Name *</L>
-            <select value={form.staff_name} onChange={handleStaffSelect} style={{...inp,background:"#fff"}}>
+            <select value={manualName?"__manual__":form.staff_name} onChange={handleStaffSelect} style={{...inp,background:"#fff"}}>
               <option value="">-- Select Staff Member --</option>
               {schoolStaff.length>0
                 ?schoolStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}{s.is_temp?" (Temp)":""}</option>)
@@ -1238,8 +1255,8 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
               }
               <option value="__manual__">+ Enter name manually</option>
             </select>
-            {form.staff_name==="__manual__"&&(
-              <Inp style={{marginTop:6}} value={""} onChange={e=>setForm(f=>({...f,staff_name:e.target.value}))} placeholder="Type full name..."/>
+            {manualName&&(
+              <input style={{...inp,marginTop:6}} value={form.staff_name} onChange={e=>setForm(f=>({...f,staff_name:e.target.value}))} placeholder="Type full name..."/>
             )}
           </div>
           <div>
@@ -1393,7 +1410,7 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
   const [search,setSearch]=useState("")
   const [modal,setModal]=useState(null)
   const [form,setForm]=useState(EMPTY_ENTRY)
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
   const sById=id=>schools.find(s=>s.id===id)
   const filtered=directory.filter(e=>tab==="all"||e.role_type===tab).filter(e=>!search||e.name.toLowerCase().includes(search.toLowerCase())||e.position.toLowerCase().includes(search.toLowerCase())||((e.school_ids||[]).some(id=>(sById(id)?.name||"").toLowerCase().includes(search.toLowerCase())))).sort((a,b)=>a.name.localeCompare(b.name))
@@ -1581,7 +1598,9 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
     try{
       let userId=userModal==="add"?null:userModal.id
       if(userModal==="add"){
+        const {data:{session:adminSession}}=await supabase.auth.getSession()
         const {data,error}=await supabase.auth.signUp({email:userForm.email,password:userForm.password})
+        if(adminSession)await supabase.auth.setSession({access_token:adminSession.access_token,refresh_token:adminSession.refresh_token})
         if(error)throw error
         userId=data.user?.id
         if(!userId)throw new Error("Could not create user")
@@ -1695,7 +1714,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
               <td style={{padding:"10px 14px"}}><Pill bg={u.is_active?"#F0FDF4":"#F1F5F9"} tx={u.is_active?"#15803D":C.textMuted}>{u.is_active?"Active":"Inactive"}</Pill></td>
               <td style={{padding:"10px 14px"}}><div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{setUserForm({...u,password:""});setUserErr("");setUserModal(u)}} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#1565C0",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Edit</button>
-                <button onClick={async()=>{if(!window.confirm("Delete "+u.name+"? This cannot be undone."))return;await supabase.from("app_users").delete().eq("id",u.id);setSupaUsers(p=>p.filter(x=>x.id!==u.id));toast.show(u.name+" deleted.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#DC2626",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Delete</button>
+                <button onClick={async()=>{if(!window.confirm("Deactivate "+u.name+"? They will no longer be able to use Ops Daily. An admin can reactivate them later by editing the user."))return;const{error}=await supabase.from("app_users").update({is_active:false}).eq("id",u.id);if(error){toast.show("Failed: "+error.message,"error");return}setSupaUsers(p=>p.map(x=>x.id===u.id?{...x,is_active:false}:x));toast.show(u.name+" deactivated.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#DC2626",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Deactivate</button>
               </div></td>
             </tr>)}</tbody>
           </table>
@@ -1743,7 +1762,7 @@ function AdminAnnouncementsTab({toast,schools}){
   const [loading,setLoading]=useState(true)
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).then(({data})=>{if(data)setAnns(data);setLoading(false)})
-    const rt=supabase.channel("admin-anns-rt-"+Date.now()).on("postgres_changes",{event:"*",schema:"public",table:"announcements"},p=>{
+    const rt=supabase.channel("admin-anns-rt").on("postgres_changes",{event:"*",schema:"public",table:"announcements"},p=>{
       if(p.eventType==="INSERT")setAnns(prev=>[p.new,...prev])
       if(p.eventType==="UPDATE")setAnns(prev=>prev.map(x=>x.id===p.new.id?p.new:x))
       if(p.eventType==="DELETE")setAnns(prev=>prev.filter(x=>x.id!==p.old?.id))
@@ -1820,7 +1839,7 @@ function PermissionsTab({supaUsers,setSupaUsers,toast}){
           })}
         </div>
         {rolePerms?.canEdit&&(<div style={{marginTop:16,display:"flex",gap:10,alignItems:"center"}}>
-          <Btn onClick={async()=>{setSaving(true);try{localStorage.setItem("customPerms",JSON.stringify(customPerms));toast.show("Permissions saved!")}catch(e){toast.show("Failed","error")};setSaving(false)}} disabled={saving}>{saving?"Saving...":"Save Permissions"}</Btn>
+          <Btn onClick={async()=>{setSaving(true);try{localStorage.setItem("customPerms",JSON.stringify(customPerms));await supabase.from("app_settings").upsert({id:"custom_perms",value:customPerms,updated_at:new Date().toISOString()},{onConflict:"id"});toast.show("Permissions saved!")}catch(e){toast.show("Failed","error")};setSaving(false)}} disabled={saving}>{saving?"Saving...":"Save Permissions"}</Btn>
           <button onClick={()=>{const p={...customPerms};delete p[selected];setCustomPerms(p);localStorage.setItem("customPerms",JSON.stringify(p));toast.show("Reset to defaults")}} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,fontFamily:"inherit"}}>Reset to defaults</button>
         </div>)}
       </Box>
@@ -1837,6 +1856,7 @@ function PermissionsTab({supaUsers,setSupaUsers,toast}){
   )
 }
 
+const shortSchoolName=n=>n.replace(/Elementary|Academy|Traditional|Montessori|International|Early Childhood Center|S\.T\.E\.A\.M\.|Fine Arts/g,"").replace(/\s+/g," ").trim()
 const SCHOOL_COORDS={
   "s1":{lat:41.6583,lng:-86.2285},  // 808 S. Twyckenham Dr
   "s3":{lat:41.6612,lng:-86.2401},  // 1902 S. Fellows St
@@ -1906,7 +1926,7 @@ function MapPage({schools,recaps}){
         if(!coords)return
         const status=todayRecaps.find(r=>r.school_id===s.id)?.status
         const color=getColor(status)
-        const shortName=s.name.replace(/Elementary|Academy|Traditional|Montessori|International|Early Childhood Center|S\.T\.E\.A\.M\.|Fine Arts/g,"").replace(/\s+/g," ").trim()
+        const shortName=shortSchoolName(s.name)
         const marker=L.marker([coords.lat,coords.lng],{icon:makeIcon(L,color,shortName)})
           .addTo(map)
           .bindTooltip(s.name,{permanent:false,direction:"top"})
@@ -1925,7 +1945,7 @@ function MapPage({schools,recaps}){
       const marker=markersRef.current[s.id]
       if(!marker)return
       const status=todayRecaps.find(r=>r.school_id===s.id)?.status
-      marker.setIcon(makeIcon(L,getColor(status),s.name.replace(/Elementary|Academy|Traditional|Montessori|International|Early Childhood/g,"").trim()))
+      marker.setIcon(makeIcon(L,getColor(status),shortSchoolName(s.name)))
     })
   },[recaps])
 
@@ -1982,6 +2002,14 @@ function MapPage({schools,recaps}){
 }
 
 
+const canSeeEventFor=(e,role)=>{
+  const aud=e.audience||"all"
+  if(aud==="all")return true
+  if(role==="admin")return true
+  if(aud==="admin")return false
+  if(aud==="staff"||aud==="admin_team")return ["director","supervisor","chef"].includes(role)
+  return aud===role
+}
 const EVENT_TYPES=[
   {id:"meeting",label:"Meeting",color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},
   {id:"training",label:"Training",color:"#7C3AED",bg:"#F5F3FF",bd:"#DDD6FE"},
@@ -1998,7 +2026,7 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
   const [form,setForm]=useState({title:"",date:"",time:"",end_time:"",type:"meeting",location:"",school_ids:[],description:"",created_by:"",audience:"all"})
   const [selDate,setSelDate]=useState(null)
   const [curMonth,setCurMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()}})
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
   const canManage=isAdmin||user.role==="director"||user.role==="supervisor"
 
@@ -2047,12 +2075,7 @@ function EventsPage({user,events,setEvents,schools,isAdmin,toast}){
   const pad=n=>String(n).padStart(2,"0")
   const dateStr=(y,m,d)=>y+"-"+pad(m+1)+"-"+pad(d)
   const eventsOnDay=d=>events.filter(e=>e.date===dateStr(y,m,d)&&canSeeEvent(e))
-  const canSeeEvent=(e)=>{
-    if(!e.audience||e.audience==="all") return true
-    if(e.audience==="admin") return ["admin"].includes(user.role)
-    if(e.audience==="staff") return ["admin","director","supervisor","chef"].includes(user.role)
-    return e.audience===user.role||user.role==="admin"
-  }
+  const canSeeEvent=(e)=>canSeeEventFor(e,user.role)
   const myEvents=events.filter(canSeeEvent)
   const upcomingEvents=myEvents.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date))
   const pastEvents=myEvents.filter(e=>e.date<TODAY).sort((a,b)=>b.date.localeCompare(a.date))
@@ -2280,13 +2303,15 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     return kmAnnouncementsOnly?"announcements":isKM?"report":"issues"
   })
   const [issues,setIssues]=useState([])
+  const [detailId,setDetailId]=useState(null)
+  const [issuesLoading,setIssuesLoading]=useState(true)
   const [announcements,setAnnouncements]=useState([])
   const [form,setForm]=useState({type:"equipment",title:"",description:"",priority:"normal",school_id:""})
   const [annForm,setAnnForm]=useState({title:"",body:"",type:"general",expires_at:"",due_date:"",audience:"all"})
   const setTabAndSave=(t)=>{setTab(t);sessionStorage.setItem("kitchen_tab",t)}
   const [annModal,setAnnModal]=useState(false)
   const [loading,setLoading]=useState(false)
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
   const userSchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
@@ -2312,8 +2337,8 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       })
     }
     loadUnread()
-    const uid1='kitchen-issues-'+Date.now()
-    const uid2='kitchen-anns-'+Date.now()
+    const uid1='kitchen-issues-rt'
+    const uid2='kitchen-anns-rt'
     const rt1=supabase.channel(uid1).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_issues'},p=>{
       if(p.eventType==='INSERT'){
         setIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)])
@@ -2342,7 +2367,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       }
       if(p.eventType==='DELETE')setIssues(prev=>prev.filter(x=>x.id!==p.old?.id))
     }).subscribe()
-    const uid3='km-msgs-'+Date.now()
+    const uid3='kitchen-msgs-badge-rt'
     const rt3=supabase.channel(uid3).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
       // Update unread badge in realtime
       if(p.eventType==='INSERT'||p.eventType==='UPDATE') loadUnread()
@@ -2362,8 +2387,9 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   },[])
 
   const loadIssues=async()=>{
-    const{data}=await supabase.from("kitchen_issues").select("*").order("created_at",{ascending:false})
+    const{data}=await supabase.from("kitchen_issues").select("*").order("created_at",{ascending:false}).limit(300)
     if(data)setIssues(data)
+    setIssuesLoading(false)
   }
   const loadAnnouncements=async()=>{
     const{data}=await supabase.from("announcements").select("*").order("created_at",{ascending:false})
@@ -2371,7 +2397,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   }
   const submitIssue=async()=>{
     if(!form.title.trim()){toast.show("Please add a title.","error");return}
-    const schoolId=canManageAll?(form.school_id||(mySchool?.id||"")):(mySchool?.id||"")
+    const schoolId=canManageAll?form.school_id:(mySchool?.id||"")
     if(!schoolId){toast.show(canManageAll?"Please select a school":"No school assigned to your account.","error");return}
     setLoading(true)
     const ni={id:uid(),type:form.type,title:form.title.trim(),description:form.description.trim(),priority:form.priority,school_id:schoolId,created_by:user.id,created_by_name:user.name||user.email,created_at:new Date().toISOString(),resolved:false,resolution_note:""}
@@ -2395,7 +2421,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     try{
       const update={status:newStatus,resolved:newStatus==="resolved"}
       if(newStatus==="acknowledged"){update.acknowledged_by=user.id;update.acknowledged_by_name=user.name||user.email;update.acknowledged_at=new Date().toISOString()}
-      if(newStatus==="in_progress"){update.in_progress_by=user.id;update.in_progress_by_name=user.name||user.email}
+      if(newStatus==="in_progress"){update.in_progress_by=user.id;update.in_progress_by_name=user.name||user.email;update.in_progress_at=new Date().toISOString()}
       if(newStatus==="resolved"){update.resolution_note=note||"" ;update.resolved_at=new Date().toISOString();update.resolved_by=user.id;update.resolved_by_name=user.name||user.email}
       // Update local state immediately - no waiting for DB
       setIssues(p=>p.map(x=>x.id===issue.id?{...x,...update}:x))
@@ -2464,6 +2490,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   return(
     <div style={{padding:"24px 20px"}}>
+      {detailId&&<IssueDetailPage issueId={detailId} issues={issues} schools={schools} supaUsers={supaUsers} user={user} toast={toast} onClose={()=>setDetailId(null)} onUpdateStatus={updateStatus} onPatchIssue={(id,patch)=>setIssues(p=>p.map(x=>x.id===id?{...x,...patch}:x))} canManageAll={canManageAll}/>}
       <PageHeader
         title="Kitchen Hub"
         subtitle={isKM?(mySchool?.name||"Your Kitchen"):"District Kitchen Issues & Communications"}
@@ -2474,6 +2501,12 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
         }
       />
 
+      {isKM&&!mySchool&&(
+        <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:R.md,padding:"12px 16px",fontSize:13,color:"#B91C1C",marginBottom:16,display:"flex",gap:10}}>
+          <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
+          <span><strong>No school assigned to your account.</strong> Ask an administrator to assign your school in the Admin Panel — until then you won't be able to report issues or see school-specific messages.</span>
+        </div>
+      )}
       {isKM&&announcements.length>0&&(
         <div style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.lg,padding:"14px 20px",marginBottom:20,display:"flex",alignItems:"center",gap:14,boxShadow:"0 4px 12px rgba(37,99,235,.3)",cursor:"pointer"}} onClick={()=>setTabAndSave("announcements")}>
           <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>📢</div>
@@ -2520,10 +2553,10 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
               <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>📅</div>
               <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Calendar</span>
-              {events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager")).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager")).length}</span>}
+              {events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).length}</span>}
             </div>
             <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
-              {events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager")).sort((a,b)=>a.date.localeCompare(b.date))[0]?fd(events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager"))[0].date)+" — "+events.filter(e=>e.date>=TODAY&&(e.audience==="all"||e.audience==="kitchen_manager"))[0].title:"No upcoming events"}
+              {(()=>{const up=events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).sort((a,b)=>a.date.localeCompare(b.date));return up[0]?fd(up[0].date)+" — "+up[0].title:"No upcoming events"})()}
             </div>
           </div>
         ):(
@@ -2605,10 +2638,12 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       {/* OPEN ISSUES - Staff view */}
       {tab==="issues"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {myIssues.filter(i=>i.status!=="resolved").length===0?(
+          {issuesLoading?(
+            <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>Loading issues...</Box>
+          ):myIssues.filter(i=>i.status!=="resolved").length===0?(
             <Box style={{textAlign:"center",padding:48,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700}}>No open issues!</div></Box>
           ):myIssues.filter(i=>i.status!=="resolved").sort((a,b)=>{const p={urgent:0,normal:1,low:2};return(p[a.priority]||1)-(p[b.priority]||1)}).map(issue=>(
-            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={canManageAll} onResolve={resolveIssue} onUpdateStatus={updateStatus} canDelete={canManageAll||issue.created_by===user.id} onDelete={(id)=>setIssues(p=>p.filter(x=>x.id!==id))}/>
+            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={canManageAll} onResolve={resolveIssue} onUpdateStatus={updateStatus} canDelete={canManageAll||issue.created_by===user.id} onDelete={(id)=>setIssues(p=>p.filter(x=>x.id!==id))} onOpen={()=>setDetailId(issue.id)}/>
           ))}
         </div>
       )}
@@ -2619,7 +2654,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
           {resolvedIssues.length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}>No resolved issues yet.</Box>
           ):resolvedIssues.map(issue=>(
-            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={false} onResolve={resolveIssue}/>
+            <KitchenIssueCard key={issue.id} issue={issue} schools={schools} canManage={false} onResolve={resolveIssue} onOpen={()=>setDetailId(issue.id)}/>
           ))}
         </div>
       )}
@@ -2633,13 +2668,12 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
       {tab==="calendar"&&isKM&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           
-          {events.filter(e=>{const aud=e.audience||"all";return aud==="all"||aud==="kitchen_manager"}).length===0?(
+          {events.filter(e=>canSeeEventFor(e,user.role)).length===0?(
             <Box style={{textAlign:"center",padding:40,color:C.textMuted}}><div style={{fontSize:32,marginBottom:8}}>📅</div><div style={{fontWeight:700}}>No upcoming events.</div></Box>
           ):events.filter(e=>{
-            const aud=e.audience||"all"
-            const audienceOk=aud==="all"||aud==="kitchen_manager"
+            const audienceOk=canSeeEventFor(e,user.role)
             const schoolOk=!e.school_ids?.length||e.school_ids.includes(mySchool?.id)
-            return audienceOk&&(schoolOk||aud==="all"||aud==="kitchen_manager")
+            return audienceOk&&schoolOk
           }).sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
             const et=ET[e.type]||ET.other
             return(
@@ -2712,7 +2746,370 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
   )
 }
 
-function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus,canDelete=false,onDelete}){  
+
+// ============================================================
+// ISSUE DETAILS PAGE - full-page view for a single kitchen issue
+// Role-aware: admin team gets workflow controls, KMs get read-only tracking
+// ============================================================
+const UPDATE_KIND_ICONS={note:"💬",status:"🔄",assign:"👤",edit:"✏️",priority:"🏷️",reopen:"↩️"}
+const PRI_META={urgent:{bg:"#FEF2F2",tx:"#DC2626",bd:"#FECACA",label:"🔴 Urgent"},normal:{bg:"#EFF6FF",tx:"#2563EB",bd:"#BFDBFE",label:"Normal"},low:{bg:"#F0FDF4",tx:"#16A34A",bd:"#BBF7D0",label:"Low"}}
+
+function IssueDetailPage({issueId,issues,schools,supaUsers,user,toast,onClose,onUpdateStatus,onPatchIssue,canManageAll}){
+  const issue=issues.find(i=>i.id===issueId)
+  const [updates,setUpdates]=useState([])
+  const [updLoading,setUpdLoading]=useState(true)
+  const [newUpdate,setNewUpdate]=useState("")
+  const [internal,setInternal]=useState(false)
+  const [assignSel,setAssignSel]=useState("")
+  const [editModal,setEditModal]=useState(false)
+  const [editForm,setEditForm]=useState({title:"",description:"",type:"equipment",priority:"normal"})
+  const [showResolve,setShowResolve]=useState(false)
+  const [resolveNote,setResolveNote]=useState("")
+  const [narrow,setNarrow]=useState(typeof window!=="undefined"&&window.innerWidth<900)
+  useEffect(()=>{const fn=()=>setNarrow(window.innerWidth<900);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
+
+  useEffect(()=>{
+    supabase.from("issue_updates").select("*").eq("issue_id",issueId).order("created_at",{ascending:true}).then(({data})=>{if(data)setUpdates(data);setUpdLoading(false)})
+    const rt=supabase.channel("issue-detail-"+issueId).on("postgres_changes",{event:"INSERT",schema:"public",table:"issue_updates"},p=>{
+      if(p.new.issue_id===issueId)setUpdates(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
+    }).subscribe()
+    return()=>rt.unsubscribe()
+  },[issueId])
+
+  if(!issue)return(
+    <div style={{position:"fixed",inset:0,background:C.bg,zIndex:60,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}>
+      <div style={{fontSize:32}}>🔍</div>
+      <div style={{fontWeight:700,color:C.text}}>Issue not found</div>
+      <div style={{fontSize:13,color:C.textMuted}}>It may have been removed.</div>
+      <Btn onClick={onClose} variant="outline">← Back to Kitchen Hub</Btn>
+    </div>
+  )
+
+  const sch=schools.find(s=>s.id===issue.school_id)
+  const kit=KIT[issue.type]||KIT.other
+  const status=issue.status||"open"
+  const pri=PRI_META[issue.priority]||PRI_META.normal
+  const isResolved=status==="resolved"
+  const isLive=!isResolved
+  const watchers=Array.isArray(issue.watchers)?issue.watchers:[]
+  const amWatching=watchers.some(w=>w.id===user.id)
+  const adminTeam=supaUsers.filter(u=>["admin","director","supervisor","chef"].includes(u.role)&&u.is_active!==false)
+  const assignedUser=supaUsers.find(u=>u.id===issue.assigned_to)
+
+  const logUpdate=async(kind,body,isInternal=false)=>{
+    const nu={id:uid(),issue_id:issue.id,kind,internal:isInternal,body,user_id:user.id,user_name:user.name||user.email,user_role:user.role,created_at:new Date().toISOString()}
+    setUpdates(p=>[...p.filter(x=>x.id!==nu.id),nu])
+    const{error}=await supabase.from("issue_updates").insert(nu)
+    if(error)toast.show("Update save failed: "+error.message,"error")
+  }
+
+  const act=async(newStatus,note="")=>{
+    await onUpdateStatus(issue,newStatus,note)
+    const labels={acknowledged:"Issue acknowledged",in_progress:"Work started",resolved:"Issue resolved"+(note?" — “"+note+"”":""),open:"Issue reopened"}
+    logUpdate(newStatus==="open"?"reopen":"status",labels[newStatus]||("Status → "+newStatus))
+  }
+
+  const doAssign=async()=>{
+    if(!assignSel)return
+    const au=supaUsers.find(u=>u.id===assignSel)
+    const patch={assigned_to:assignSel,assigned_to_name:au?.name||au?.email||"--"}
+    onPatchIssue(issue.id,patch)
+    const{error}=await supabase.from("kitchen_issues").update(patch).eq("id",issue.id)
+    if(error){toast.show("Assign failed: "+error.message,"error");return}
+    logUpdate("assign","Assigned to "+patch.assigned_to_name)
+    toast.show("Assigned to "+patch.assigned_to_name)
+    setAssignSel("")
+  }
+
+  const toggleWatch=async()=>{
+    const next=amWatching?watchers.filter(w=>w.id!==user.id):[...watchers,{id:user.id,name:user.name||user.email}]
+    onPatchIssue(issue.id,{watchers:next})
+    const{error}=await supabase.from("kitchen_issues").update({watchers:next}).eq("id",issue.id)
+    if(error)toast.show("Could not update followers: "+error.message,"error")
+  }
+
+  const openEdit=()=>{setEditForm({title:issue.title||"",description:issue.description||"",type:issue.type||"equipment",priority:issue.priority||"normal"});setEditModal(true)}
+  const saveEdit=async()=>{
+    if(!editForm.title.trim())return
+    const patch={title:editForm.title.trim(),description:editForm.description,type:editForm.type,priority:editForm.priority}
+    const priChanged=issue.priority!==editForm.priority
+    onPatchIssue(issue.id,patch)
+    const{error}=await supabase.from("kitchen_issues").update(patch).eq("id",issue.id)
+    if(error){toast.show("Save failed: "+error.message,"error");return}
+    logUpdate("edit","Issue details edited")
+    if(priChanged)logUpdate("priority","Priority changed to "+(PRI_META[editForm.priority]?.label||editForm.priority))
+    toast.show("Issue updated!")
+    setEditModal(false)
+  }
+
+  const postUpdate=async()=>{
+    const body=newUpdate.trim()
+    if(!body)return
+    await logUpdate("note",body,internal)
+    setNewUpdate("");setInternal(false)
+    toast.show(internal?"Internal note added":"Update posted!")
+  }
+
+  const visibleUpdates=updates.filter(u=>canManageAll||!u.internal)
+  const notes=visibleUpdates.filter(u=>u.kind==="note")
+  const stageOrder={open:0,acknowledged:1,in_progress:2,resolved:3}
+  const cur=stageOrder[status]??0
+  const stages=[
+    {id:"acknowledged",label:"Acknowledged",icon:"✅",at:issue.acknowledged_at,by:issue.acknowledged_by_name},
+    {id:"in_progress",label:"In Progress",icon:"🔄",at:issue.in_progress_at,by:issue.in_progress_by_name},
+    {id:"resolved",label:"Resolved",icon:"✔️",at:issue.resolved_at,by:issue.resolved_by_name},
+  ]
+  const timeline=[
+    {icon:"📋",label:"Issue reported by "+(issue.created_by_name||"--"),at:issue.created_at},
+    issue.acknowledged_at&&{icon:"👀",label:"Acknowledged by "+(issue.acknowledged_by_name||"--"),at:issue.acknowledged_at},
+    issue.in_progress_at&&{icon:"🔧",label:"Work started"+(issue.in_progress_by_name?" by "+issue.in_progress_by_name:""),at:issue.in_progress_at},
+    issue.resolved_at&&{icon:"✅",label:"Resolved by "+(issue.resolved_by_name||"--"),at:issue.resolved_at},
+    ...visibleUpdates.map(u=>({icon:UPDATE_KIND_ICONS[u.kind]||"💬",label:(u.kind==="note"?((u.internal?"Internal note":"Update")+" posted by "+u.user_name):(u.body+" — "+u.user_name)),at:u.created_at}))
+  ].filter(Boolean).sort((a,b)=>new Date(a.at)-new Date(b.at))
+
+  const Initials=({name})=>{
+    const parts=(name||"?").split(" ")
+    const ini=(parts[0]?.[0]||"")+(parts[1]?.[0]||"")
+    return <div style={{width:32,height:32,borderRadius:"50%",background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,flexShrink:0}}>{ini.toUpperCase()||"?"}</div>
+  }
+  const SideRow=({l,children})=>(<div style={{marginBottom:12}}><div style={{fontSize:10,fontWeight:700,color:C.textLight,textTransform:"uppercase",letterSpacing:".06em",marginBottom:3}}>{l}</div><div style={{fontSize:13,color:C.text}}>{children}</div></div>)
+
+  const mainCol=(
+    <div style={{display:"flex",flexDirection:"column",gap:14,minWidth:0}}>
+      {/* LIVE STATUS TRACKER */}
+      <Box style={{padding:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <span style={{fontWeight:800,fontSize:14,color:C.text}}>Progress</span>
+          {isLive?(
+            <span style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:800,color:"#16A34A"}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16A34A",animation:"livePulse 1.4s ease infinite"}}/>LIVE · updates in real time</span>
+          ):(
+            <Pill bg="#F0FDF4" tx="#15803D" bd="#BBF7D0">✔ Complete</Pill>
+          )}
+        </div>
+        <div style={{display:"flex",alignItems:"flex-start",gap:0}}>
+          {stages.map((st,i)=>{
+            const done=cur>=i+1
+            const active=cur===i+1&&!isResolved||(isResolved&&i===2)
+            return(
+              <React.Fragment key={st.id}>
+                {i>0&&<div style={{flex:1,height:3,background:cur>=i+1?"#16A34A":"#E2E8F0",marginTop:17,borderRadius:2}}/>}
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",width:narrow?90:120,flexShrink:0}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,background:done?"#F0FDF4":"#F8FAFC",border:"2.5px solid "+(done?"#16A34A":active?"#2563EB":"#E2E8F0"),boxShadow:active&&!done?"0 0 0 4px #EFF6FF":"none"}}>{done?st.icon:i+1}</div>
+                  <div style={{fontSize:11,fontWeight:done||active?800:600,color:done?"#15803D":active?"#2563EB":C.textLight,marginTop:6,textAlign:"center"}}>{st.label}</div>
+                  {st.at&&<div style={{fontSize:10,color:C.textLight,marginTop:2,textAlign:"center"}}>{fdt(st.at)}</div>}
+                  {st.by&&<div style={{fontSize:10,color:C.textLight,textAlign:"center"}}>{st.by}</div>}
+                </div>
+              </React.Fragment>
+            )
+          })}
+        </div>
+        {isResolved&&(
+          <div style={{marginTop:14,background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:"10px 14px",fontSize:13,color:"#15803D",fontWeight:600}}>✅ This issue has been resolved{issue.resolved_by_name?" by "+issue.resolved_by_name:""}{issue.resolved_at?" on "+fdt(issue.resolved_at):""}.{issue.resolution_note?" “"+issue.resolution_note+"”":""}</div>
+        )}
+        {/* ACTION BUTTONS - admin team only */}
+        {canManageAll&&(
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
+            {status==="open"&&<Btn onClick={()=>act("acknowledged")} sm>👀 Acknowledge</Btn>}
+            {status==="acknowledged"&&<Btn onClick={()=>act("in_progress")} sm>🔧 Start Work</Btn>}
+            {status==="in_progress"&&!showResolve&&<Btn onClick={()=>setShowResolve(true)} variant="success" sm>✅ Resolve Issue</Btn>}
+            {isResolved&&<Btn onClick={()=>act("open")} variant="outline" sm>↩ Reopen Issue</Btn>}
+            <Btn onClick={openEdit} variant="outline" sm><Edit2 size={12}/> Edit Issue</Btn>
+          </div>
+        )}
+        {canManageAll&&showResolve&&(
+          <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:14,marginTop:10}}>
+            <L>Resolution Note (optional)</L>
+            <textarea value={resolveNote} onChange={e=>setResolveNote(e.target.value)} rows={2} placeholder="Describe how this was resolved..." style={{...inp,resize:"vertical",marginBottom:10}}/>
+            <div style={{display:"flex",gap:8}}>
+              <Btn onClick={()=>setShowResolve(false)} variant="outline" sm>Cancel</Btn>
+              <Btn onClick={()=>{act("resolved",resolveNote);setShowResolve(false);setResolveNote("")}} variant="success" sm>✅ Mark Resolved</Btn>
+            </div>
+          </div>
+        )}
+      </Box>
+
+      {/* DESCRIPTION */}
+      <Box style={{padding:20}}>
+        <div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:10}}>Issue Description</div>
+        <div style={{fontSize:13,color:issue.description?C.text:C.textLight,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{issue.description||"No additional details were provided."}</div>
+        {Array.isArray(issue.photos)&&issue.photos.length>0&&(
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+            {issue.photos.map((p,i)=><a key={i} href={p} target="_blank" rel="noreferrer"><img src={p} alt={"Attachment "+(i+1)} style={{width:96,height:96,objectFit:"cover",borderRadius:R.md,border:"1px solid #E2E8F0"}}/></a>)}
+          </div>
+        )}
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:14,fontSize:12,color:C.textMuted}}>
+          <span>{kit.icon} {kit.label}</span>
+          {sch&&<span>📍 {sch.name}</span>}
+          {sch?.address&&<span style={{color:C.textLight}}>{sch.address}</span>}
+        </div>
+      </Box>
+
+      {/* ASSIGNED STAFF */}
+      <Box style={{padding:20}}>
+        <div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:10}}>Assigned Staff</div>
+        {issue.assigned_to_name?(
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Initials name={issue.assigned_to_name}/>
+            <div>
+              <div style={{fontWeight:700,fontSize:13,color:C.text}}>{issue.assigned_to_name}</div>
+              <div style={{fontSize:11,color:C.textMuted}}>{assignedUser?.role?assignedUser.role.replace(/_/g," "):"Staff"}{assignedUser?.phone?" · "+assignedUser.phone:""}{assignedUser?.email?" · "+assignedUser.email:""}</div>
+              <div style={{marginTop:3}}><Pill bg={isResolved?"#F0FDF4":"#EFF6FF"} tx={isResolved?"#15803D":"#1D4ED8"}>{isResolved?"Completed":"Actively assigned"}</Pill></div>
+            </div>
+          </div>
+        ):(
+          <div style={{fontSize:13,color:C.textLight}}>No one has been assigned yet.</div>
+        )}
+        {canManageAll&&(
+          <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+            <select value={assignSel} onChange={e=>setAssignSel(e.target.value)} style={{...inp,flex:"1 1 200px",maxWidth:280}}>
+              <option value="">-- Select staff to assign --</option>
+              {adminTeam.map(u=><option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+            </select>
+            <Btn onClick={doAssign} disabled={!assignSel} sm>👤 {issue.assigned_to?"Reassign":"Assign"}</Btn>
+          </div>
+        )}
+      </Box>
+
+      {/* UPDATES & NOTES */}
+      <Box style={{padding:20}}>
+        <div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:12}}>Updates &amp; Notes</div>
+        {updLoading?<div style={{fontSize:13,color:C.textMuted}}>Loading updates...</div>
+        :notes.length===0?<div style={{fontSize:13,color:C.textLight,marginBottom:8}}>No updates posted yet.{canManageAll?"":" Check back — updates from the team will appear here in real time."}</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:8}}>
+          {notes.map(u=>(
+            <div key={u.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+              <Initials name={u.user_name}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:700,fontSize:12,color:C.text}}>{u.user_name}</span>
+                  <span style={{fontSize:10,color:C.textLight}}>{fdt(u.created_at)}</span>
+                  {u.internal&&<Pill bg="#FFFBEB" tx="#B45309" bd="#FDE68A">🔒 Internal</Pill>}
+                </div>
+                <div style={{fontSize:13,color:C.text,lineHeight:1.6,marginTop:2,whiteSpace:"pre-wrap"}}>{u.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>}
+        {canManageAll&&(
+          <div style={{borderTop:"1px solid #F1F5F9",paddingTop:12,marginTop:6}}>
+            <textarea value={newUpdate} onChange={e=>setNewUpdate(e.target.value)} rows={2} placeholder='Post an update... e.g. "Technician is on site." or "Replacement part ordered."' style={{...inp,resize:"vertical",marginBottom:8}}/>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:C.textMuted}}>
+                <input type="checkbox" checked={internal} onChange={e=>setInternal(e.target.checked)} style={{width:14,height:14,accentColor:"#B45309"}}/>
+                Internal note (hidden from kitchen managers)
+              </label>
+              <Btn onClick={postUpdate} disabled={!newUpdate.trim()} sm>Post Update</Btn>
+            </div>
+          </div>
+        )}
+      </Box>
+
+      {/* ACTIVITY TIMELINE */}
+      <Box style={{padding:20}}>
+        <div style={{fontWeight:800,fontSize:14,color:C.text,marginBottom:12}}>Activity Timeline</div>
+        <div style={{display:"flex",flexDirection:"column"}}>
+          {timeline.map((t,i)=>(
+            <div key={i} style={{display:"flex",gap:12,position:"relative",paddingBottom:i<timeline.length-1?16:0}}>
+              {i<timeline.length-1&&<div style={{position:"absolute",left:13,top:28,bottom:0,width:2,background:"#F1F5F9"}}/>}
+              <div style={{width:28,height:28,borderRadius:"50%",background:"#F8FAFC",border:"1px solid #E2E8F0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0,zIndex:1}}>{t.icon}</div>
+              <div style={{flex:1,minWidth:0,paddingTop:3}}>
+                <div style={{fontSize:12.5,color:C.text,lineHeight:1.5}}>{t.label}</div>
+                <div style={{fontSize:10.5,color:C.textLight,marginTop:1}}>{fdt(t.at)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Box>
+    </div>
+  )
+
+  const sideCol=(
+    <div style={{display:"flex",flexDirection:"column",gap:14,width:narrow?"100%":280,flexShrink:0}}>
+      <Box style={{padding:18}}>
+        <div style={{fontWeight:800,fontSize:13,color:C.text,marginBottom:12}}>Summary</div>
+        <SideRow l="Priority"><Pill bg={pri.bg} tx={pri.tx} bd={pri.bd}>{pri.label}</Pill></SideRow>
+        <SideRow l="Category">{kit.icon} {kit.label}</SideRow>
+        <SideRow l="Status"><Pill bg={(ISSUE_STATUS[status]||ISSUE_STATUS.open).bg} tx={(ISSUE_STATUS[status]||ISSUE_STATUS.open).color} bd={(ISSUE_STATUS[status]||ISSUE_STATUS.open).bd}>{(ISSUE_STATUS[status]||ISSUE_STATUS.open).icon} {(ISSUE_STATUS[status]||ISSUE_STATUS.open).label}</Pill></SideRow>
+        <SideRow l="School">{sch?.name||"--"}</SideRow>
+        {sch?.address&&<SideRow l="Location">{sch.address}</SideRow>}
+        <SideRow l="Assigned To">{issue.assigned_to_name||<em style={{color:C.textLight,fontStyle:"normal"}}>Unassigned</em>}</SideRow>
+        <SideRow l="Reported">{fdt(issue.created_at)} by {issue.created_by_name||"--"}</SideRow>
+      </Box>
+      <Box style={{padding:18}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <span style={{fontWeight:800,fontSize:13,color:C.text}}>Followers</span>
+          <button onClick={toggleWatch} style={{background:amWatching?"#FEF2F2":"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:amWatching?"#DC2626":"#1D4ED8",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>{amWatching?"− Unfollow":"+ Follow"}</button>
+        </div>
+        {watchers.length===0?<div style={{fontSize:12,color:C.textLight}}>No followers yet. Follow to keep this issue on your radar.</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:6}}>{watchers.map(w=>(<div key={w.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.text}}><Initials name={w.name}/><span>{w.name}{w.id===user.id?" (you)":""}</span></div>))}</div>}
+      </Box>
+    </div>
+  )
+
+  return(
+    <div style={{position:"fixed",inset:0,background:C.bg,zIndex:60,overflowY:"auto"}}>
+      <style>{"@keyframes livePulse{0%{opacity:1}50%{opacity:.35}100%{opacity:1}}"}</style>
+      <div style={{maxWidth:1100,margin:"0 auto",padding:narrow?"16px 14px 60px":"24px 24px 80px"}}>
+        {/* HEADER */}
+        <div style={{marginBottom:18}}>
+          <button onClick={onClose} style={{background:"#fff",border:"1px solid #E2E8F0",borderRadius:R.md,padding:"7px 14px",cursor:"pointer",color:C.textMuted,fontSize:13,fontWeight:600,fontFamily:"inherit",marginBottom:14}}>← Back to Kitchen Hub</button>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+            <div style={{minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+                <span style={{fontFamily:"monospace",fontSize:12,fontWeight:700,color:C.textMuted,background:"#F1F5F9",padding:"2px 8px",borderRadius:6}}>KH-{String(issue.id).toUpperCase()}</span>
+                <Pill bg={pri.bg} tx={pri.tx} bd={pri.bd}>{pri.label}</Pill>
+                <Pill bg={kit.bg} tx={kit.color}>{kit.icon} {kit.label}</Pill>
+              </div>
+              <h1 style={{fontSize:narrow?18:22,fontWeight:800,color:C.text,margin:"0 0 4px",letterSpacing:"-.3px",lineHeight:1.3}}>{issue.title}</h1>
+              <div style={{fontSize:12,color:C.textMuted}}>📍 {sch?.name||"--"} · Reported {fdt(issue.created_at)} by <strong>{issue.created_by_name||"--"}</strong></div>
+            </div>
+          </div>
+        </div>
+        {!canManageAll&&(
+          <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"9px 14px",fontSize:12,color:"#1D4ED8",fontWeight:600,marginBottom:14}}>👁 Tracking view — you'll see status changes and team updates here in real time.</div>
+        )}
+        <div style={{display:"flex",gap:16,flexDirection:narrow?"column":"row",alignItems:"flex-start"}}>
+          {mainCol}
+          {sideCol}
+        </div>
+      </div>
+
+      {/* EDIT MODAL */}
+      {editModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 16px",zIndex:70,overflowY:"auto"}}>
+          <div style={{background:"#fff",borderRadius:R.xl,width:"100%",maxWidth:480,boxShadow:SH.lg,marginTop:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 22px",borderBottom:"1px solid #E2E8F0"}}>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Edit Issue</span>
+              <button onClick={()=>setEditModal(false)} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:R.md,cursor:"pointer",color:C.textMuted,display:"flex",padding:7}}><X size={14}/></button>
+            </div>
+            <div style={{padding:22,display:"flex",flexDirection:"column",gap:14}}>
+              <div><L>Title *</L><Inp value={editForm.title} onChange={e=>setEditForm(f=>({...f,title:e.target.value}))}/></div>
+              <div><L>Details</L><textarea value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} rows={3} style={{...inp,resize:"vertical",lineHeight:1.6}}/></div>
+              <div><L>Category</L>
+                <Sel value={editForm.type} onChange={e=>setEditForm(f=>({...f,type:e.target.value}))}>
+                  {KITCHEN_ISSUE_TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+                </Sel>
+              </div>
+              <div><L>Priority</L>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                  {[{id:"low",l:"Low",c:"#16A34A",bg:"#F0FDF4"},{id:"normal",l:"Normal",c:"#2563EB",bg:"#EFF6FF"},{id:"urgent",l:"Urgent 🔴",c:"#DC2626",bg:"#FEF2F2"}].map(p=>{const a=editForm.priority===p.id;return(
+                    <button key={p.id} onClick={()=>setEditForm(f=>({...f,priority:p.id}))} style={{padding:"10px",borderRadius:R.md,border:"2px solid "+(a?p.c:C.border),background:a?p.bg:"#fff",color:a?p.c:C.textMuted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>{p.l}</button>
+                  )})}
+                </div>
+              </div>
+              <div style={{display:"flex",gap:10,paddingTop:4}}>
+                <Btn onClick={()=>setEditModal(false)} variant="outline">Cancel</Btn>
+                <Btn onClick={saveEdit} disabled={!editForm.title.trim()}>Save Changes</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus,canDelete=false,onDelete,onOpen}){  
   const [showResolve,setShowResolve]=useState(false)
   const [note,setNote]=useState("")
   const kit=KIT[issue.type]||KIT.other
@@ -2727,7 +3124,9 @@ function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus,canD
   }
 
   return(
+    <div onClick={onOpen} style={{cursor:onOpen?"pointer":"default"}}>
     <Box style={{padding:16,borderLeft:"4px solid "+status.color}}>
+      {onOpen&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:-6}}><span style={{fontSize:11,fontWeight:700,color:"#2563EB"}}>View details →</span></div>}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:10}}>
         <div style={{flex:1}}>
           <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:8}}>
@@ -2760,9 +3159,9 @@ function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus,canD
         action.needsNote?(
           <div key={action.s}>
             {!showResolve?(
-              <button onClick={()=>setShowResolve(true)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:R.md,border:"1px solid "+action.bd,background:action.bg,color:action.color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{action.label}</button>
+              <button onClick={(e)=>{e.stopPropagation();setShowResolve(true)}} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:R.md,border:"1px solid "+action.bd,background:action.bg,color:action.color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{action.label}</button>
             ):(
-              <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:14,marginTop:8}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:R.md,padding:14,marginTop:8}}>
                 <L>Resolution Note (optional)</L>
                 <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="Describe how this was resolved..." style={{...inp,resize:"vertical",marginBottom:10}}/>
                 <div style={{display:"flex",gap:8}}>
@@ -2773,13 +3172,14 @@ function KitchenIssueCard({issue,schools,canManage,onResolve,onUpdateStatus,canD
             )}
           </div>
         ):(
-          <button key={action.s} onClick={()=>onUpdateStatus(issue,action.s)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:R.md,border:"1px solid "+action.bd,background:action.bg,color:action.color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>{action.label}</button>
+          <button key={action.s} onClick={(e)=>{e.stopPropagation();onUpdateStatus(issue,action.s)}} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:R.md,border:"1px solid "+action.bd,background:action.bg,color:action.color,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>{action.label}</button>
         )
       ))}
       {canDelete&&(
-        <button onClick={async()=>{if(!window.confirm('Remove this issue?'))return;const{error}=await supabase.from('kitchen_issues').delete().eq('id',issue.id);if(!error&&onDelete)onDelete(issue.id)}} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:R.md,border:'1px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginTop:4}}>🗑 Remove</button>
+        <button onClick={async(e)=>{e.stopPropagation();if(!window.confirm('Remove this issue?'))return;const{error}=await supabase.from('kitchen_issues').delete().eq('id',issue.id);if(!error&&onDelete)onDelete(issue.id)}} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:R.md,border:'1px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginTop:4}}>🗑 Remove</button>
       )}
     </Box>
+    </div>
   )
 }
 
@@ -2849,7 +3249,7 @@ function KitchenMessagesTab({user,schools,supaUsers,toast,isKM,mySchoolIds=[],sh
       setLoading(false)
     })
     // Realtime for messages
-    const rtId='km-msgs-'+Date.now()
+    const rtId='kitchen-msgs-tab-rt'
     const rt=supabase.channel(rtId).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
       if(p.eventType==='INSERT'){
         setMessages(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
@@ -3075,7 +3475,12 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
   }
 
   const getNotAcked=(annId)=>{
-    const ackedSchoolIds=new Set(acks.filter(a=>a.announcement_id===annId).map(a=>a.school_id))
+    const ackedSchoolIds=new Set()
+    acks.filter(a=>a.announcement_id===annId).forEach(a=>{
+      if(a.school_id)ackedSchoolIds.add(a.school_id)
+      const u=supaUsers.find(x=>x.id===a.user_id)
+      ;(u?.school_ids||[]).forEach(sid=>ackedSchoolIds.add(sid))
+    })
     return schools.filter(s=>!ackedSchoolIds.has(s.id)&&s.type!=="office")
   }
 
@@ -3145,7 +3550,7 @@ function AnnTab({announcements,setAnnouncements,canManageAll,isKM,onPost,toast,u
 // ============================================================
 function StatsPage({recaps,calloffs,schools,directory,supaUsers,go}){
   const [period,setPeriod]=useState("30")
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
   const cutoff=new Date(Date.now()-parseInt(period)*24*60*60*1000).toISOString().slice(0,10)
@@ -3294,7 +3699,7 @@ function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
   const [tab,setTab]=useState("submit")
   const [form,setForm]=useState({school_id:"",date:TODAY,items:{}})
   const [loading,setLoading]=useState(false)
-  const [mobile,setMobile]=useState(window.innerWidth<768)
+  const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
   const isKM=user.role==="kitchen_manager"
@@ -3323,6 +3728,7 @@ function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
     if(!schoolId){toast.show("Select a school","error");return}
     const missing=CHECKLIST_ITEMS.filter(i=>!form.items[i.id])
     if(missing.length>3){toast.show("Please complete at least "+(totalItems-3)+" items","error");return}
+    if(missing.length>0&&!window.confirm("You have "+missing.length+" unchecked item"+(missing.length!==1?"s":"")+":\n\n"+missing.map(m=>"\u2022 "+m.label).join("\n")+"\n\nSubmit anyway?"))return
     setLoading(true)
     const ns={id:uid(),school_id:schoolId,date:form.date,submitted_by:user.id,submitted_by_name:user.name||user.email,items:form.items,notes:"",created_at:new Date().toISOString()}
     const{error}=await supabase.from("checklist_submissions").insert(ns)
@@ -3355,6 +3761,7 @@ function ChecklistPage({user,schools,supaUsers,toast,isAdmin}){
       {tab==="submit"&&!(alreadySubmittedToday&&isKM)&&(
         <div style={{maxWidth:600,display:"flex",flexDirection:"column",gap:14}}>
           {isKM&&mySchool&&<div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1D4ED8"}}>📍 Submitting for: {mySchool.name}</div>}
+          {isKM&&!mySchool&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:R.md,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#B91C1C"}}>⚠️ No school assigned to your account — ask an administrator to assign one before submitting.</div>}
           {!isKM&&<Box style={{marginBottom:4}}><L>School</L><SG schools={schools} value={form.school_id} onChange={e=>setForm(f=>({...f,school_id:e.target.value}))}/></Box>}
           <Box style={{marginBottom:4}}><L>Date</L><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={{...inp}} max={TODAY}/></Box>
 
