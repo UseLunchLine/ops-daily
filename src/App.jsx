@@ -39,7 +39,7 @@ const SM=Object.fromEntries(STATS.map(s=>[s.id,s]))
 const ISS=[{id:"food_out",label:"Ran out of food"},{id:"low_food",label:"Low food supply"},{id:"staffing",label:"Staffing issue"},{id:"equip",label:"Equipment issue"},{id:"delivery",label:"Delivery problem"},{id:"health",label:"Health/Safety"},{id:"power",label:"Power/Utilities"},{id:"behavior",label:"Student behavior"},{id:"pest",label:"Pest/Sanitation"},{id:"weather",label:"Weather-related"}]
 const RC={admin:{bg:"#EDE7F6",t:"#4527A0"},director:{bg:"#E8EAF6",t:"#283593"},supervisor:{bg:"#E1F5FE",t:"#01579B"},chef:{bg:"#FFF3E0",t:"#E65100"},kitchen_manager:{bg:"#F0FDF4",t:"#15803D"}}
 const CTB={calloff:{bg:"#E3F2FD",tx:"#1565C0",label:"Call-Off"},sick:{bg:"#FFFDE7",tx:"#F57F17",label:"Sick Day"},ncns:{bg:"#FFEBEE",tx:"#C62828",label:"No Call No Show"},tardy:{bg:"#FFF3E0",tx:"#E65100",label:"Tardy"}}
-const DIR_ROLES=[{id:"all",label:"All",color:"#546E7A",bg:"#ECEFF1"},{id:"manager",label:"Managers",color:"#1565C0",bg:"#E3F2FD"},{id:"chef",label:"Chefs",color:"#E65100",bg:"#FFF3E0"},{id:"director",label:"Directors",color:"#6A1B9A",bg:"#F3E5F5"},{id:"asst_dir",label:"Asst. Directors",color:"#006064",bg:"#E0F7FA"},{id:"supervisor",label:"Op Supervisors",color:"#1B5E20",bg:"#E8F5E9"},{id:"csa",label:"CSAs",color:"#4E342E",bg:"#EFEBE9"},{id:"ppa",label:"PPAs",color:"#283593",bg:"#E8EAF6"},{id:"temp",label:"Temp Staff",color:"#7B1FA2",bg:"#F3E5F5"}]
+const DIR_ROLES=[{id:"all",label:"All",color:"#546E7A",bg:"#ECEFF1"},{id:"manager",label:"Managers",color:"#1565C0",bg:"#E3F2FD"},{id:"chef",label:"Chefs",color:"#E65100",bg:"#FFF3E0"},{id:"director",label:"Directors",color:"#6A1B9A",bg:"#F3E5F5"},{id:"supervisor",label:"Op Supervisors",color:"#1B5E20",bg:"#E8F5E9"},{id:"csa",label:"CSAs",color:"#4E342E",bg:"#EFEBE9"},{id:"ppa",label:"PPAs",color:"#283593",bg:"#E8EAF6"},{id:"temp",label:"Temp Staff",color:"#7B1FA2",bg:"#F3E5F5"}]
 const EMPTY_ENTRY={name:"",position:"",role_type:"manager",school_ids:[],phone:"",email:"",is_active:true,is_temp:false,temp_end_date:""}
 const TODAY=(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")})()
 const uid=()=>Math.random().toString(36).slice(2,8)
@@ -169,7 +169,7 @@ const SD=[] // real directory comes from Supabase
 const C={primary:"#2563EB",surface:"#FFFFFF",border:"#E2E8F0",text:"#0F172A",textMuted:"#64748B",textLight:"#94A3B8",bg:"#F8FAFC"}
 const R={sm:8,md:12,lg:16,xl:20,full:9999}
 const SH={sm:"0 1px 3px rgba(0,0,0,.08)",md:"0 4px 12px rgba(0,0,0,.08)",lg:"0 8px 24px rgba(0,0,0,.10)"}
-const inp={width:"100%",padding:"10px 14px",border:"1px solid #E2E8F0",borderRadius:R.md,fontSize:14,background:"#fff",color:"#0F172A",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}
+const inp={width:"100%",padding:"10px 14px",border:"1px solid #E2E8F0",borderRadius:R.md,fontSize:16,background:"#fff",color:"#0F172A",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}
 const lbl={fontSize:11,fontWeight:700,color:"#64748B",textTransform:"uppercase",letterSpacing:".07em",display:"block",marginBottom:6}
 
 const Pill=({bg,tx,bd,children})=><span style={{background:bg,color:tx,border:"1px solid "+(bd||bg),padding:"2px 10px",borderRadius:R.full,fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",whiteSpace:"nowrap"}}>{children}</span>
@@ -413,7 +413,7 @@ export default function App(){
     }
     if(page==="dashboard")return <DashPage {...props} events={events} supaUsers={supaUsers}/>
     if(page==="submit") return <SubmitPage {...props}/>
-    if(page==="schools"||page==="school") return <SchoolsPage {...props}/>
+    if(page==="schools"||page==="school") return <SchoolsPage {...props} supaUsers={supaUsers}/>
     if(page==="calloffs") return <CalloffsPage {...props}/>
     if(page==="directory")return <DirPage {...props}/>
     if(page==="map")return <MapPage {...props}/>
@@ -674,6 +674,18 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   const [announcements,setAnnouncements]=useState([])
   const [unreadMsgs,setUnreadMsgs]=useState(0)
   const isKMDash=user?.role==="kitchen_manager"
+  const canManageAllDash=["admin","director","supervisor","chef"].includes(user?.role)
+  const [dashIssues,setDashIssues]=useState([])
+  useEffect(()=>{
+    if(!canManageAllDash)return
+    supabase.from("kitchen_issues").select("*").eq("status","open").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setDashIssues(data)})
+    const rt=supabase.channel("dash-issues-rt").on("postgres_changes",{event:"*",schema:"public",table:"kitchen_issues"},p=>{
+      if(p.eventType==="INSERT")setDashIssues(prev=>[p.new,...prev.filter(x=>x.id!==p.new.id)].slice(0,20))
+      if(p.eventType==="UPDATE")setDashIssues(prev=>prev.map(x=>x.id===p.new.id?p.new:x).filter(x=>x.status==="open"))
+      if(p.eventType==="DELETE")setDashIssues(prev=>prev.filter(x=>x.id!==p.old?.id))
+    }).subscribe()
+    return()=>rt.unsubscribe()
+  },[])
   useEffect(()=>{
     supabase.from("announcements").select("*").order("created_at",{ascending:false}).limit(20).then(({data})=>{if(data)setAnnouncements(data.filter(a=>canSeeAnn(a,user?.role)))})
     // Load unread message count
@@ -812,6 +824,57 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
           </div>
         ))}
       </div>
+
+      {/* Kitchen Hub Issues — admin team only */}
+      {canManageAllDash&&(
+        <Box style={{marginBottom:16,padding:0,overflow:"hidden"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderBottom:"1px solid #F1F5F9"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Kitchen Hub Issues</span>
+              {dashIssues.filter(i=>i.status!=="resolved").length>0&&(
+                <span style={{background:"#FEF2F2",color:"#DC2626",border:"1px solid #FECACA",padding:"2px 9px",borderRadius:R.full,fontSize:11,fontWeight:700}}>
+                  {dashIssues.filter(i=>i.status!=="resolved").length} open
+                </span>
+              )}
+            </div>
+            <button onClick={()=>go("kitchen")} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"6px 14px",cursor:"pointer",color:"#2563EB",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>View all in Kitchen Hub →</button>
+          </div>
+          {dashIssues.filter(i=>i.status!=="resolved").length===0?(
+            <div style={{padding:"28px 18px",textAlign:"center",color:C.textMuted,fontSize:13}}>✅ No open issues across all schools</div>
+          ):(
+            <div>
+              {dashIssues.filter(i=>i.status!=="resolved").slice(0,5).map((issue,idx,arr)=>{
+                const sch=sById(issue.school_id)
+                const kit={"equipment":"🔧","pest":"🐛","staffing":"👤","supply":"📦","safety":"⚠️","facility":"🏫","coverage":"🙋","weather":"🌧️","utilities":"⚡","other":"📋"}
+                const pri={"urgent":{bg:"#FEF2F2",tx:"#DC2626",label:"Urgent"},"normal":{bg:"#EFF6FF",tx:"#2563EB",label:"Normal"},"low":{bg:"#F0FDF4",tx:"#16A34A",label:"Low"}}
+                const st={"open":{bg:"#FEF2F2",tx:"#DC2626",label:"Open"},"acknowledged":{bg:"#FFFBEB",tx:"#D97706",label:"Acknowledged"},"in_progress":{bg:"#EFF6FF",tx:"#2563EB",label:"In Progress"}}
+                const p=pri[issue.priority]||pri.normal
+                const s=st[issue.status]||st.open
+                return(
+                  <div key={issue.id} onClick={()=>go("kitchen")} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:idx<arr.length-1?"1px solid #F8FAFC":"none",cursor:"pointer",background:"#fff"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
+                    onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                    <span style={{fontSize:18,flexShrink:0}}>{kit[issue.type]||"📋"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{issue.title}</div>
+                      <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>{sch?.name||"--"} · {issue.created_by_name||"--"} · {fdt(issue.created_at)}</div>
+                    </div>
+                    <div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <span style={{background:p.bg,color:p.tx,padding:"2px 8px",borderRadius:R.full,fontSize:11,fontWeight:700}}>{p.label}</span>
+                      <span style={{background:s.bg,color:s.tx,padding:"2px 8px",borderRadius:R.full,fontSize:11,fontWeight:700}}>{s.label}</span>
+                    </div>
+                  </div>
+                )
+              })}
+              {dashIssues.filter(i=>i.status!=="resolved").length>5&&(
+                <div onClick={()=>go("kitchen")} style={{padding:"10px 18px",textAlign:"center",fontSize:12,color:"#2563EB",fontWeight:700,cursor:"pointer",borderTop:"1px solid #F1F5F9",background:"#FAFAFA"}}>
+                  +{dashIssues.filter(i=>i.status!=="resolved").length-5} more — view all in Kitchen Hub
+                </div>
+              )}
+            </div>
+          )}
+        </Box>
+      )}
 
       <Box style={{marginBottom:16,padding:"14px 18px"}}>
         <div style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"flex-end"}}>
@@ -1008,11 +1071,11 @@ function SubmitPage({user,schools,setRecaps,toast}){
   )
 }
 
-function SchoolPage({ctx,schools,recaps,setRecaps,users,toast,user,isAdmin,noHeader=false}){
+function SchoolPage({ctx,schools,recaps,setRecaps,users,supaUsers=[],toast,user,isAdmin,noHeader=false}){
   const [sid,setSid]=useState(ctx?.school?.id||"")
   const [on,setOn]=useState(new Set())
   const [resolveId,setResolveId]=useState(null)
-  const uById=id=>users.find(u=>u.id===id)
+  const uById=id=>users.find(u=>u.id===id)||supaUsers.find(u=>u.id===id)
   const sch=schools.find(s=>s.id===sid)
   const sr=recaps.filter(r=>r.school_id===sid).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
   const tc=sch?TC[sch.type]:null
@@ -1188,19 +1251,17 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
   const [fT,setFT]=useState("")
   const sById=id=>schools.find(s=>s.id===id)
 
-  // Only show CSAs, PPAs, Kitchen Managers and temp staff in calloff dropdown
-  const calloffRoles=["csa","ppa","kitchen_manager"]
-  const eligibleStaff=directory.filter(d=>
-    d.is_active!==false&&(
-      calloffRoles.includes((d.role_type||"").toLowerCase())||
-      calloffRoles.includes((d.position||"").toLowerCase())||
-      d.is_temp===true
-    )
-  )
+  // All active staff from directory, sorted by name
+  const allActiveStaff=directory.filter(d=>d.is_active!==false).sort((a,b)=>(a.name||"").localeCompare(b.name||""))
 
+  // When a school is selected, show staff assigned to that school first,
+  // then fall back to all staff if none are assigned to that school yet.
   const schoolStaff=form.school_id
-    ?eligibleStaff.filter(d=>(d.school_ids||[]).includes(form.school_id))
-    :eligibleStaff
+    ?(()=>{
+        const atSchool=allActiveStaff.filter(d=>(d.school_ids||[]).includes(form.school_id))
+        return atSchool.length>0?atSchool:allActiveStaff
+      })()
+    :allActiveStaff
 
   const handleStaffSelect=(e)=>{
     const name=e.target.value
@@ -1237,10 +1298,8 @@ function CalloffsPage({user,calloffs,setCalloffs,schools,toast,directory=[]}){
             <L>Staff Name *</L>
             <select value={manualName?"__manual__":form.staff_name} onChange={handleStaffSelect} style={{...inp,background:"#fff"}}>
               <option value="">-- Select Staff Member --</option>
-              {schoolStaff.length>0
-                ?schoolStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}{s.is_temp?" (Temp)":""}</option>)
-                :eligibleStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}{s.is_temp?" (Temp)":""}</option>)
-              }
+              {schoolStaff.map(s=><option key={s.id} value={s.name}>{s.name}{s.position?" – "+s.position:""}{s.is_temp?" (Temp)":""}</option>)}
+              {schoolStaff.length===0&&<option disabled value="">No staff in directory yet</option>}
               <option value="__manual__">+ Enter name manually</option>
             </select>
             {manualName&&(
@@ -3233,14 +3292,14 @@ function KitchenMessageCard({msg,user,onReply,onAck}){
 }
 
 // Combined Schools page - School Detail + Monthly Report in sub-tabs
-function SchoolsPage({ctx,schools,recaps,setRecaps,users,supaUsers,toast,user,isAdmin}){
+function SchoolsPage({ctx,schools,recaps,setRecaps,users,supaUsers=[],toast,user,isAdmin}){
   const [tab,setTab]=useState("detail")
   const props={ctx,schools,recaps,setRecaps,users,supaUsers,toast,user,isAdmin}
   return(
     <div style={{padding:"24px 20px"}}>
       <PageHeader title="Schools" subtitle="School recap history and monthly performance reports"/>
       <TabBar tabs={[{id:"detail",label:"🏫 School Detail"},{id:"report",label:"📊 Monthly Report"}]} active={tab} set={setTab}/>
-      {tab==="detail"&&<SchoolPage {...props} noHeader={true}/>}
+      {tab==="detail"&&<SchoolPage {...props} supaUsers={supaUsers} noHeader={true}/>}
       {tab==="report"&&<ReportPage recaps={recaps} schools={schools} users={[...users,...supaUsers]} noHeader={true}/>}
     </div>
   )
