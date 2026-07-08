@@ -2645,15 +2645,33 @@ function KitchenPage({user,schools,supaUsers,directory=[],isAdmin,toast,kmAnnoun
   return(
     <div style={{padding:"24px 20px"}}>
       {detailId&&<IssueDetailPage issueId={detailId} issues={issues} schools={schools} supaUsers={supaUsers} directory={directory} user={user} toast={toast} onClose={()=>setDetailId(null)} onUpdateStatus={updateStatus} onPatchIssue={(id,patch)=>setIssues(p=>p.map(x=>x.id===id?{...x,...patch}:x))} canManageAll={canManageAll}/>}
-      <PageHeader
-        title="Kitchen Hub"
-        subtitle={isKM?(mySchool?.name||"Your Kitchen"):"District Kitchen Issues & Communications"}
-        action={
-          <div style={{display:"flex",gap:8}}>
-            {canManageAll&&<Btn onClick={()=>setAnnModal(true)} sm><Plus size={13}/> Announcement</Btn>}
+      {isKM?(
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+          <div>
+            <h1 style={{fontSize:22,fontWeight:900,color:C.text,letterSpacing:"-.4px",margin:0}}>
+              {(()=>{const h=new Date().getHours();return h<12?"Good morning":h<17?"Good afternoon":"Good evening"})()}, {user?.name?.split(" ")[0]||"there"} 👋
+            </h1>
+            <div style={{fontSize:13,color:C.textMuted,marginTop:3}}>{fd(TODAY)} · {mySchool?.name||"Kitchen Hub"}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:5}}>
+              <span style={{width:7,height:7,borderRadius:"50%",background:"#16A34A",display:"inline-block"}}/>
+              <span style={{fontSize:12,color:"#16A34A",fontWeight:600}}>Live · Updated just now</span>
+            </div>
           </div>
-        }
-      />
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <AlertsBtn userId={user?.id}/>
+          </div>
+        </div>
+      ):(
+        <PageHeader
+          title="Kitchen Hub"
+          subtitle="District Kitchen Issues & Communications"
+          action={
+            <div style={{display:"flex",gap:8}}>
+              {canManageAll&&<Btn onClick={()=>setAnnModal(true)} sm><Plus size={13}/> Announcement</Btn>}
+            </div>
+          }
+        />
+      )}
 
       {isKM&&!mySchool&&(
         <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:R.md,padding:"12px 16px",fontSize:13,color:"#B91C1C",marginBottom:16,display:"flex",gap:10}}>
