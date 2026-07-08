@@ -835,26 +835,28 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
         return(
           <Box style={{marginBottom:20,padding:0,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.06),0 4px 16px -4px rgba(0,0,0,.08)"}}>
             {/* Header */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 20px",background:urgentCount>0?"linear-gradient(135deg,#FFF5F5,#FFF)":"#fff",borderBottom:"1px solid #F1F5F9"}}>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:36,height:36,borderRadius:10,background:urgentCount>0?"#FEF2F2":"#EFF6FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
-                  {urgentCount>0?"🚨":"📋"}
-                </div>
-                <div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontWeight:800,fontSize:15,color:C.text}}>Kitchen Hub Issues</span>
-                    {openIssues.length>0&&<span style={{background:urgentCount>0?"#FEF2F2":"#F1F5F9",color:urgentCount>0?"#DC2626":C.textMuted,border:"1px solid "+(urgentCount>0?"#FECACA":"#E2E8F0"),padding:"1px 8px",borderRadius:R.full,fontSize:11,fontWeight:800}}>{openIssues.length} open</span>}
+            <div style={{padding:"16px 20px",background:urgentCount>0?"linear-gradient(135deg,#FFF5F5,#FFF)":"#fff",borderBottom:"1px solid #F1F5F9"}}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:urgentCount>0?"#FEF2F2":"#EFF6FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                    {urgentCount>0?"🚨":"📋"}
                   </div>
-                  <div style={{fontSize:12,color:C.textMuted,marginTop:1}}>
-                    {openIssues.length===0?"All schools running clean"
-                      :urgentCount>0?urgentCount+" urgent issue"+(urgentCount!==1?"s":"")+" need"+(urgentCount===1?"s":"")+" attention"
-                      :"No urgent issues — "+openIssues.length+" being tracked"}
+                  <div style={{minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontWeight:800,fontSize:15,color:C.text}}>Kitchen Hub Issues</span>
+                      {openIssues.length>0&&<span style={{background:urgentCount>0?"#FEF2F2":"#F1F5F9",color:urgentCount>0?"#DC2626":C.textMuted,border:"1px solid "+(urgentCount>0?"#FECACA":"#E2E8F0"),padding:"1px 8px",borderRadius:R.full,fontSize:11,fontWeight:800}}>{openIssues.length} open</span>}
+                    </div>
+                    <div style={{fontSize:12,color:C.textMuted,marginTop:1}}>
+                      {openIssues.length===0?"All schools running clean"
+                        :urgentCount>0?urgentCount+" urgent issue"+(urgentCount!==1?"s":"")+" need"+(urgentCount===1?"s":"")+" attention"
+                        :"No urgent issues — "+openIssues.length+" being tracked"}
+                    </div>
                   </div>
                 </div>
+                <button onClick={()=>go("kitchen")} style={{display:"flex",alignItems:"center",gap:6,background:C.primary,color:"#fff",border:"none",borderRadius:R.md,padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
+                  Kitchen Hub →
+                </button>
               </div>
-              <button onClick={()=>go("kitchen")} style={{display:"flex",alignItems:"center",gap:6,background:C.primary,color:"#fff",border:"none",borderRadius:R.md,padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>
-                Kitchen Hub →
-              </button>
             </div>
 
             {openIssues.length===0?(
@@ -2621,58 +2623,67 @@ function KitchenPage({user,schools,supaUsers,directory=[],isAdmin,toast,kmAnnoun
         </div>
       )}
 
-      {/* Quick Access Cards */}
-      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr 1fr":"repeat(3,1fr)",gap:10,marginBottom:20}}>
+      {/* Quick Access Cards — match main dashboard style */}
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(3,1fr)",gap:12,marginBottom:20}}>
         {/* Announcements card */}
-        <div onClick={()=>setTabAndSave("announcements")} style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(37,99,235,.22)",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-            <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>📢</div>
-            <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Announcements</span>
-            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{announcements.filter(a=>canSeeAnn(a,user?.role)).length}</span>}
+        <div onClick={()=>setTabAndSave("announcements")} style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(37,99,235,.25)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>📢</div>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Announcements</span>
+            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{announcements.filter(a=>canSeeAnn(a,user?.role)).length}</span>}
           </div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
             {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0?announcements.filter(a=>canSeeAnn(a,user?.role))[0].title:"No active announcements"}
           </div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view all →</div>
         </div>
 
         {/* Messages card */}
-        <div onClick={()=>setTabAndSave("inbox")} style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(124,58,237,.2)",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-            <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>💬</div>
-            <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Messages</span>
-            {unreadMsgs>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{unreadMsgs}</span>}
+        <div onClick={()=>setTabAndSave("inbox")} style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(124,58,237,.22)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>💬</div>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Messages</span>
+            {unreadMsgs>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{unreadMsgs}</span>}
           </div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5}}>
-            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":""):"No unread messages"}
+          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
+            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":""):"All caught up"}
           </div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to open →</div>
         </div>
 
-        {/* Calendar / Issues card depending on role */}
+        {/* Calendar (KM) or Open Issues (admin team) */}
         {isKM?(
-          <div onClick={()=>setTabAndSave("calendar")} style={{background:"linear-gradient(135deg,#0D9488,#0F766E)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(13,148,136,.2)",position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-              <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>📅</div>
-              <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Calendar</span>
-              {events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).length}</span>}
+          <div onClick={()=>setTabAndSave("calendar")} style={{background:"linear-gradient(135deg,#0D9488,#0F766E)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(13,148,136,.22)",position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>📅</div>
+              <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Calendar</span>
+              {events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).length}</span>}
             </div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
               {(()=>{const up=events.filter(e=>e.date>=TODAY&&canSeeEventFor(e,user.role)).sort((a,b)=>a.date.localeCompare(b.date));return up[0]?fd(up[0].date)+" — "+up[0].title:"No upcoming events"})()}
             </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view →</div>
           </div>
         ):(
-          <div onClick={()=>setTabAndSave("issues")} style={{background:"linear-gradient(135deg,#DC2626,#B91C1C)",borderRadius:R.xl,padding:"16px",cursor:"pointer",boxShadow:"0 4px 14px rgba(220,38,38,.2)",position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:-16,right:-16,width:64,height:64,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-              <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>🔴</div>
-              <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>Open Issues</span>
-              {openIssues.length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.28)",borderRadius:R.full,padding:"1px 7px",fontSize:10,fontWeight:700,color:"#fff"}}>{openIssues.length}</span>}
+          <div onClick={()=>setTabAndSave("issues")} style={{background:openIssues.filter(i=>i.priority==="urgent").length>0?"linear-gradient(135deg,#DC2626,#B91C1C)":"linear-gradient(135deg,#0EA5E9,#0284C7)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:openIssues.filter(i=>i.priority==="urgent").length>0?"0 4px 16px rgba(220,38,38,.25)":"0 4px 16px rgba(14,165,233,.22)",position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                {openIssues.filter(i=>i.priority==="urgent").length>0?"🚨":"✅"}
+              </div>
+              <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Open Issues</span>
+              {openIssues.length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{openIssues.length}</span>}
             </div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,.72)",lineHeight:1.5}}>
-              {openIssues.filter(i=>i.priority==="urgent").length>0?openIssues.filter(i=>i.priority==="urgent").length+" urgent issue"+(openIssues.filter(i=>i.priority==="urgent").length!==1?"s":"")+" need attention":openIssues.length>0?openIssues.length+" open issue"+(openIssues.length!==1?"s":""):"No open issues"}
+            <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
+              {openIssues.filter(i=>i.priority==="urgent").length>0
+                ?openIssues.filter(i=>i.priority==="urgent").length+" urgent issue"+(openIssues.filter(i=>i.priority==="urgent").length!==1?"s":"")+" need attention"
+                :openIssues.length>0?openIssues.length+" open issue"+(openIssues.length!==1?"s":"")+" being tracked"
+                :"All schools running clean"}
             </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view issues →</div>
           </div>
         )}
       </div>
