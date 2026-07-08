@@ -826,55 +826,88 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
       </div>
 
       {/* Kitchen Hub Issues — admin team only */}
-      {canManageAllDash&&(
-        <Box style={{marginBottom:16,padding:0,overflow:"hidden"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderBottom:"1px solid #F1F5F9"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontWeight:800,fontSize:15,color:C.text}}>Kitchen Hub Issues</span>
-              {dashIssues.filter(i=>i.status!=="resolved").length>0&&(
-                <span style={{background:"#FEF2F2",color:"#DC2626",border:"1px solid #FECACA",padding:"2px 9px",borderRadius:R.full,fontSize:11,fontWeight:700}}>
-                  {dashIssues.filter(i=>i.status!=="resolved").length} open
-                </span>
-              )}
-            </div>
-            <button onClick={()=>go("kitchen")} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"6px 14px",cursor:"pointer",color:"#2563EB",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>View all in Kitchen Hub →</button>
-          </div>
-          {dashIssues.filter(i=>i.status!=="resolved").length===0?(
-            <div style={{padding:"28px 18px",textAlign:"center",color:C.textMuted,fontSize:13}}>✅ No open issues across all schools</div>
-          ):(
-            <div>
-              {dashIssues.filter(i=>i.status!=="resolved").slice(0,5).map((issue,idx,arr)=>{
-                const sch=sById(issue.school_id)
-                const kit={"equipment":"🔧","pest":"🐛","staffing":"👤","supply":"📦","safety":"⚠️","facility":"🏫","coverage":"🙋","weather":"🌧️","utilities":"⚡","other":"📋"}
-                const pri={"urgent":{bg:"#FEF2F2",tx:"#DC2626",label:"Urgent"},"normal":{bg:"#EFF6FF",tx:"#2563EB",label:"Normal"},"low":{bg:"#F0FDF4",tx:"#16A34A",label:"Low"}}
-                const st={"open":{bg:"#FEF2F2",tx:"#DC2626",label:"Open"},"acknowledged":{bg:"#FFFBEB",tx:"#D97706",label:"Acknowledged"},"in_progress":{bg:"#EFF6FF",tx:"#2563EB",label:"In Progress"}}
-                const p=pri[issue.priority]||pri.normal
-                const s=st[issue.status]||st.open
-                return(
-                  <div key={issue.id} onClick={()=>go("kitchen")} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:idx<arr.length-1?"1px solid #F8FAFC":"none",cursor:"pointer",background:"#fff"}}
-                    onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
-                    onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                    <span style={{fontSize:18,flexShrink:0}}>{kit[issue.type]||"📋"}</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{issue.title}</div>
-                      <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>{sch?.name||"--"} · {issue.created_by_name||"--"} · {fdt(issue.created_at)}</div>
-                    </div>
-                    <div style={{display:"flex",gap:6,flexShrink:0}}>
-                      <span style={{background:p.bg,color:p.tx,padding:"2px 8px",borderRadius:R.full,fontSize:11,fontWeight:700}}>{p.label}</span>
-                      <span style={{background:s.bg,color:s.tx,padding:"2px 8px",borderRadius:R.full,fontSize:11,fontWeight:700}}>{s.label}</span>
-                    </div>
-                  </div>
-                )
-              })}
-              {dashIssues.filter(i=>i.status!=="resolved").length>5&&(
-                <div onClick={()=>go("kitchen")} style={{padding:"10px 18px",textAlign:"center",fontSize:12,color:"#2563EB",fontWeight:700,cursor:"pointer",borderTop:"1px solid #F1F5F9",background:"#FAFAFA"}}>
-                  +{dashIssues.filter(i=>i.status!=="resolved").length-5} more — view all in Kitchen Hub
+      {canManageAllDash&&(()=>{
+        const openIssues=dashIssues.filter(i=>i.status!=="resolved")
+        const urgentCount=openIssues.filter(i=>i.priority==="urgent").length
+        const kitIcons={"equipment":"🔧","pest":"🐛","staffing":"👤","supply":"📦","safety":"⚠️","facility":"🏫","coverage":"🙋","weather":"🌧️","utilities":"⚡","other":"📋"}
+        const priMeta={"urgent":{color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA",label:"Urgent",accent:"#DC2626"},"normal":{color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE",label:"Normal",accent:"#2563EB"},"low":{color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0",label:"Low",accent:"#16A34A"}}
+        const stMeta={"open":{color:"#DC2626",bg:"#FEF2F2",label:"Open"},"acknowledged":{color:"#D97706",bg:"#FFFBEB",label:"Acknowledged"},"in_progress":{color:"#2563EB",bg:"#EFF6FF",label:"In Progress"}}
+        return(
+          <Box style={{marginBottom:20,padding:0,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.06),0 4px 16px -4px rgba(0,0,0,.08)"}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 20px",background:urgentCount>0?"linear-gradient(135deg,#FFF5F5,#FFF)":"#fff",borderBottom:"1px solid #F1F5F9"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:36,height:36,borderRadius:10,background:urgentCount>0?"#FEF2F2":"#EFF6FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                  {urgentCount>0?"🚨":"📋"}
                 </div>
-              )}
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontWeight:800,fontSize:15,color:C.text}}>Kitchen Hub Issues</span>
+                    {openIssues.length>0&&<span style={{background:urgentCount>0?"#FEF2F2":"#F1F5F9",color:urgentCount>0?"#DC2626":C.textMuted,border:"1px solid "+(urgentCount>0?"#FECACA":"#E2E8F0"),padding:"1px 8px",borderRadius:R.full,fontSize:11,fontWeight:800}}>{openIssues.length} open</span>}
+                  </div>
+                  <div style={{fontSize:12,color:C.textMuted,marginTop:1}}>
+                    {openIssues.length===0?"All schools running clean"
+                      :urgentCount>0?urgentCount+" urgent issue"+(urgentCount!==1?"s":"")+" need"+(urgentCount===1?"s":"")+" attention"
+                      :"No urgent issues — "+openIssues.length+" being tracked"}
+                  </div>
+                </div>
+              </div>
+              <button onClick={()=>go("kitchen")} style={{display:"flex",alignItems:"center",gap:6,background:C.primary,color:"#fff",border:"none",borderRadius:R.md,padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>
+                Kitchen Hub →
+              </button>
             </div>
-          )}
-        </Box>
-      )}
+
+            {openIssues.length===0?(
+              <div style={{padding:"36px 20px",textAlign:"center"}}>
+                <div style={{fontSize:32,marginBottom:8}}>✅</div>
+                <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>No open issues</div>
+                <div style={{fontSize:13,color:C.textMuted}}>All schools are running clean today.</div>
+              </div>
+            ):(
+              <div>
+                {openIssues.slice(0,6).map((issue,idx,arr)=>{
+                  const sch=sById(issue.school_id)
+                  const p=priMeta[issue.priority]||priMeta.normal
+                  const s=stMeta[issue.status]||stMeta.open
+                  const isUrgent=issue.priority==="urgent"
+                  return(
+                    <div key={issue.id} onClick={()=>go("kitchen")} 
+                      style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",borderBottom:idx<arr.length-1?"1px solid #F8FAFC":"none",cursor:"pointer",borderLeft:"3px solid "+p.accent,background:isUrgent?"#FFFAFA":"#fff",transition:"background .12s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=isUrgent?"#FEF2F2":"#F8FAFC"}
+                      onMouseLeave={e=>e.currentTarget.style.background=isUrgent?"#FFFAFA":"#fff"}>
+                      {/* Icon */}
+                      <div style={{width:36,height:36,borderRadius:9,background:p.bg,border:"1px solid "+p.bd,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                        {kitIcons[issue.type]||"📋"}
+                      </div>
+                      {/* Content */}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13.5,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{issue.title}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                          <span style={{fontSize:11,color:C.textMuted,fontWeight:600}}>📍 {sch?.name||"Unknown school"}</span>
+                          <span style={{color:C.border}}>·</span>
+                          <span style={{fontSize:11,color:C.textMuted}}>by {issue.created_by_name||"--"}</span>
+                          <span style={{color:C.border}}>·</span>
+                          <span style={{fontSize:11,color:C.textLight}}>{fdt(issue.created_at)}</span>
+                        </div>
+                      </div>
+                      {/* Badges */}
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+                        <span style={{background:p.bg,color:p.color,border:"1px solid "+p.bd,padding:"2px 9px",borderRadius:R.full,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{p.label}</span>
+                        <span style={{background:s.bg,color:s.color,padding:"2px 9px",borderRadius:R.full,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{s.label}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {openIssues.length>6&&(
+                  <div onClick={()=>go("kitchen")} style={{padding:"12px 20px",textAlign:"center",fontSize:13,color:C.primary,fontWeight:700,cursor:"pointer",borderTop:"1px solid #F1F5F9",background:"#FAFAFA",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                    <span>+{openIssues.length-6} more open issues</span><span>→</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </Box>
+        )
+      })()}
 
       <Box style={{marginBottom:16,padding:"14px 18px"}}>
         <div style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"flex-end"}}>
