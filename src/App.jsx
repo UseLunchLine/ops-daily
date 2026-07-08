@@ -399,11 +399,15 @@ export default function App(){
 
   const props={toast,user,schools,setSchools,recaps,setRecaps,calloffs,setCalloffs,directory,setDirectory,users,supaUsers,setSupaUsers,events,setEvents,go,sById,uById,ctx,isAdmin:perms.admin}
 
-  const PageEl=()=>{
+  // renderPage is a plain function call, NOT a React component.
+  // Defining it as a component (const PageEl=()=>{...}) causes React to
+  // see a NEW component type on every App re-render, fully unmounting and
+  // remounting the entire page — which is what caused "kicked back to main".
+  const renderPage=()=>{
     const allowed=getAllowedPages(user?.role||"admin")
     if(!allowed.includes(page)){
       const defaultPg=ROLE_DEFAULT[user?.role||"admin"]||"dashboard"
-      setTimeout(()=>{setPage(defaultPg);sessionStorage.setItem('ops_page',defaultPg)},0)
+      if(page!==defaultPg){setTimeout(()=>{setPage(defaultPg);sessionStorage.setItem('ops_page',defaultPg)},0)}
       if(user?.role==="kitchen_manager") return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} directory={directory} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go}/>
       return <DashPage {...props}/>
     }
@@ -479,7 +483,7 @@ export default function App(){
           </div>
         </>}
 
-        <div style={{padding:"12px 14px",paddingBottom:32}}><PageEl/></div>
+        <div style={{padding:"12px 14px",paddingBottom:32}}>{renderPage()}</div>
       </div>
     )
   }
@@ -512,7 +516,7 @@ export default function App(){
           </button>
         </div>
       </aside>
-      <main style={{flex:1,background:C.bg,overflowX:"hidden",minWidth:0}}><div style={{maxWidth:1400,width:"100%",margin:"0 auto"}}><PageEl/></div></main>
+      <main style={{flex:1,background:C.bg,overflowX:"hidden",minWidth:0}}><div style={{maxWidth:1400,width:"100%",margin:"0 auto"}}>{renderPage()}</div></main>
     </div>
   )
 }
