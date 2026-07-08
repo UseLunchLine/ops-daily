@@ -1603,7 +1603,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
       }
       // Sync-through to Staff Directory — same id means no duplicates across sources
       const posMap={admin:"Administrator",director:"Director",supervisor:"Operations Supervisor",chef:"Chef",kitchen_manager:"Kitchen Manager",csa:"CSA",ppa:"PPA"}
-      await supabase.from("directory").upsert({
+      const dirEntry={
         id:userId,
         name:userForm.name,
         email:userForm.email||"",
@@ -1612,7 +1612,23 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
         role_type:userForm.role,
         school_ids:userForm.school_ids||[],
         is_active:userModal==="add"?true:(userForm.is_active!==false)
-      },{onConflict:"id"})
+      }
+      const{error:dirErr}=await supabase.from("directory").upsert(dirEntry,{onConflict:"id"})
+      if(dirErr){
+        // If upsert fails (e.g. no unique constraint on id), fall back to insert-or-update
+        const{data:existing}=await supabase.from("directory").select("id").eq("id",userId).maybeSingle()
+        if(existing){
+          await supabase.from("directory").update(dirEntry).eq("id",userId)
+        } else {
+          await supabase.from("directory").insert(dirEntry)
+        }
+      }
+      // Update local directory state immediately — no reload needed
+      setDirectory(p=>{
+        const exists=p.find(x=>x.id===userId)
+        if(exists) return p.map(x=>x.id===userId?{...x,...dirEntry}:x)
+        return [...p,dirEntry]
+      })
       loadUsers()
       setUserModal(null)
     }catch(e){

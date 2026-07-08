@@ -1,7 +1,15 @@
 const CACHE_NAME = 'ops-daily-v1';
 
-self.addEventListener('install', e => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(clients.claim()));
+// Do NOT call skipWaiting — let the new SW wait until all tabs are closed
+// before activating. This prevents force-reloading open tabs on every deploy.
+self.addEventListener('install', e => {
+  // intentionally no skipWaiting
+});
+
+self.addEventListener('activate', e => {
+  // Take control of existing clients only after natural takeover
+  e.waitUntil(clients.claim());
+});
 
 self.addEventListener('push', e => {
   let data = { title: 'Ops Daily', body: 'New notification' };
