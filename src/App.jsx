@@ -306,7 +306,7 @@ export default function App(){
       if(r.data)setRecaps(r.data)
       if(co.data)setCalloffs(co.data)
       if(d.data!==null)setDirectory(d.data)
-      if(su.data)setSupaUsers(su.data)
+      if(su.data)setSupaUsers(su.data.map(u=>({...u,school_ids:Array.isArray(u.school_ids)?u.school_ids:(u.school_ids?[u.school_ids]:[])})))
       if(ev&&ev.data)setEvents(ev.data)
       if(sa&&sa.data&&sa.data.length>0){
         setSchools(p=>p.map(s=>{
@@ -523,9 +523,13 @@ function Login(){
   const [show,setShow]=useState(false)
   const [err,setErr]=useState("")
   const [loading,setLoading]=useState(false)
+  const emailRef=React.useRef(null)
+  useEffect(()=>{emailRef.current?.focus()},[])
   const try_=async(e,p)=>{
+    if(loading)return
+    if(!e.trim()||!p.trim()){setErr("Please enter your email and password.");return}
     setLoading(true);setErr("")
-    const {error}=await supabase.auth.signInWithPassword({email:e,password:p})
+    const {error}=await supabase.auth.signInWithPassword({email:e.trim(),password:p})
     if(error){setErr("Invalid email or password.");setLoading(false);return}
     setLoading(false)
   }
@@ -539,10 +543,10 @@ function Login(){
         <Box style={{boxShadow:SH.lg,borderRadius:R.xl,padding:24}}>
 
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div><L>Email</L><Inp type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@sbcsc.k12.in.us"/></div>
+            <div><L>Email</L><input ref={emailRef} type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&try_(email,pw)} placeholder="you@sbcsc.k12.in.us" autoComplete="email" style={inp}/></div>
             <div><L>Password</L>
               <div style={{position:"relative"}}>
-                <input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Password" style={{...inp,paddingRight:40}}/>
+                <input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&try_(email,pw)} placeholder="Password" autoComplete="current-password" style={{...inp,paddingRight:40}}/>
                 <button onClick={()=>setShow(v=>!v)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:C.textLight,display:"flex"}}>{show?<EyeOff size={14}/>:<Eye size={14}/>}</button>
               </div>
             </div>
@@ -676,7 +680,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
         const mySchoolIds=(supaUsersRef.current.find(u=>u.id===user?.id)?.school_ids||[])
         const cutoff=new Date(Date.now()-30*24*60*60*1000)
         const unread=data.filter(m=>{
-          if(m.read||m.reply_to||m.from_user_id===user?.id) return false
+          if(m.read===true||m.reply_to||m.from_user_id===user?.id) return false
           if(new Date(m.created_at)<cutoff) return false
           if(isKM) return !m.to_school_id||mySchoolIds.includes(m.to_school_id)
           return true
@@ -686,7 +690,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
     }
     loadUnread()
     const rtMsgs=supabase.channel('dash-msgs-rt-'+user?.id).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
-      if(p.eventType==='INSERT'||p.eventType==='UPDATE') loadUnread()
+      loadUnread()
     }).subscribe()
     const rt=supabase.channel('dash-anns-rt').on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT'){
@@ -1561,7 +1565,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
 
   const loadUsers=async()=>{
     const {data}=await supabase.from("app_users").select("*").order("name")
-    if(data)setSupaUsers(data)
+    if(data)setSupaUsers(data.map(u=>({...u,school_ids:Array.isArray(u.school_ids)?u.school_ids:(u.school_ids?[u.school_ids]:[])})))
   }
 
   const openAddUser=()=>{
@@ -1720,7 +1724,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
               <td style={{padding:"10px 14px",fontSize:12,color:C.textMuted}}>{(u.school_ids||[]).length>0?(u.school_ids||[]).length+" school"+(u.school_ids.length!==1?"s":""):"--"}</td>
               <td style={{padding:"10px 14px"}}><Pill bg={u.is_active?"#F0FDF4":"#F1F5F9"} tx={u.is_active?"#15803D":C.textMuted}>{u.is_active?"Active":"Inactive"}</Pill></td>
               <td style={{padding:"10px 14px"}}><div style={{display:"flex",gap:6}}>
-                <button onClick={()=>{setUserForm({...u,password:""});setUserErr("");setUserModal(u)}} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#1565C0",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Edit</button>
+                <button onClick={()=>{setUserForm({...u,password:"",school_ids:Array.isArray(u.school_ids)?u.school_ids:[]});setUserErr("");setUserModal(u)}} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#1565C0",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Edit</button>
                 <button onClick={async()=>{if(!window.confirm("Deactivate "+u.name+"? They will no longer be able to use Ops Daily. An admin can reactivate them later by editing the user."))return;const{error}=await supabase.from("app_users").update({is_active:false}).eq("id",u.id);if(error){toast.show("Failed: "+error.message,"error");return}await supabase.from("directory").update({is_active:false}).eq("id",u.id);setSupaUsers(p=>p.map(x=>x.id===u.id?{...x,is_active:false}:x));toast.show(u.name+" deactivated.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#DC2626",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Deactivate</button>
               </div></td>
             </tr>)}</tbody>
@@ -2333,11 +2337,9 @@ function KitchenPage({user,schools,supaUsers,directory=[],isAdmin,toast,kmAnnoun
         const _mySchoolIds=supaUsers.find(u=>u.id===user.id)?.school_ids||[]
         const cutoff=new Date(Date.now()-30*24*60*60*1000)
         const unread=data.filter(m=>{
-          if(m.read||m.reply_to||m.from_user_id===user.id) return false
+          if(m.read===true||m.reply_to||m.from_user_id===user.id) return false
           if(new Date(m.created_at)<cutoff) return false
-          // KM: only messages sent to their school or broadcast (no school)
           if(isKM) return !m.to_school_id||_mySchoolIds.includes(m.to_school_id)
-          // Admin team: all messages
           return true
         }).length
         setUnreadMsgs(unread)
@@ -2456,10 +2458,8 @@ function KitchenPage({user,schools,supaUsers,directory=[],isAdmin,toast,kmAnnoun
       created_by_name:user.name||user.email,
       created_at:new Date().toISOString()
     }
-    console.log('Saving announcement:', na)
     const{error}=await supabase.from("announcements").insert(na)
     if(error){
-      console.error('Announcement save error:', error)
       toast.show("Failed to save: "+error.message,"error")
       return
     }
@@ -2776,7 +2776,7 @@ function IssueDetailPage({issueId,issues,schools,supaUsers,directory=[],user,toa
   useEffect(()=>{const fn=()=>setNarrow(window.innerWidth<900);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
 
   useEffect(()=>{
-    supabase.from("issue_updates").select("*").eq("issue_id",issueId).order("created_at",{ascending:true}).then(({data})=>{if(data)setUpdates(data);setUpdLoading(false)})
+    supabase.from("issue_updates").select("*").eq("issue_id",issueId).order("created_at",{ascending:true}).then(({data,error})=>{if(data)setUpdates(data);if(error)console.warn("issue_updates:",error.message);setUpdLoading(false)})
     const rt=supabase.channel("issue-detail-"+issueId).on("postgres_changes",{event:"INSERT",schema:"public",table:"issue_updates"},p=>{
       if(p.new.issue_id===issueId)setUpdates(prev=>[...prev.filter(x=>x.id!==p.new.id),p.new])
     }).subscribe()
@@ -2812,7 +2812,7 @@ function IssueDetailPage({issueId,issues,schools,supaUsers,directory=[],user,toa
     const nu={id:uid(),issue_id:issue.id,kind,internal:isInternal,body,user_id:user.id,user_name:user.name||user.email,user_role:user.role,created_at:new Date().toISOString()}
     setUpdates(p=>[...p.filter(x=>x.id!==nu.id),nu])
     const{error}=await supabase.from("issue_updates").insert(nu)
-    if(error)toast.show("Update save failed: "+error.message,"error")
+    if(error){toast.show(error.message.includes("does not exist")?"Run issue_details.sql in Supabase first — the issue_updates table is missing.":"Update save failed: "+error.message,"error")}
   }
 
   const act=async(newStatus,note="")=>{
