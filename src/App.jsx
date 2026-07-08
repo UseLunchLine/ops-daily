@@ -41,7 +41,7 @@ const RC={admin:{bg:"#EDE7F6",t:"#4527A0"},director:{bg:"#E8EAF6",t:"#283593"},s
 const CTB={calloff:{bg:"#E3F2FD",tx:"#1565C0",label:"Call-Off"},sick:{bg:"#FFFDE7",tx:"#F57F17",label:"Sick Day"},ncns:{bg:"#FFEBEE",tx:"#C62828",label:"No Call No Show"},tardy:{bg:"#FFF3E0",tx:"#E65100",label:"Tardy"}}
 const DIR_ROLES=[{id:"all",label:"All",color:"#546E7A",bg:"#ECEFF1"},{id:"manager",label:"Managers",color:"#1565C0",bg:"#E3F2FD"},{id:"chef",label:"Chefs",color:"#E65100",bg:"#FFF3E0"},{id:"director",label:"Directors",color:"#6A1B9A",bg:"#F3E5F5"},{id:"asst_dir",label:"Asst. Directors",color:"#006064",bg:"#E0F7FA"},{id:"supervisor",label:"Op Supervisors",color:"#1B5E20",bg:"#E8F5E9"},{id:"csa",label:"CSAs",color:"#4E342E",bg:"#EFEBE9"},{id:"ppa",label:"PPAs",color:"#283593",bg:"#E8EAF6"},{id:"temp",label:"Temp Staff",color:"#7B1FA2",bg:"#F3E5F5"}]
 const EMPTY_ENTRY={name:"",position:"",role_type:"manager",school_ids:[],phone:"",email:"",is_active:true,is_temp:false,temp_end_date:""}
-const TODAY=new Date().toISOString().slice(0,10)
+const TODAY=(()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")})()
 const uid=()=>Math.random().toString(36).slice(2,8)
 const fd=d=>new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
 const ft=ts=>new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})
@@ -160,31 +160,11 @@ async function callAI(messages,systemPrompt=""){
   }catch{return null}
 }
 
-const SU=[{id:"u1",name:"Admin User",email:"admin@demo.com",password:"demo",role:"admin",is_active:true},{id:"u2",name:"Maria Garcia",email:"mgarcia@demo.com",password:"demo",role:"supervisor",is_active:true},{id:"u3",name:"James Wilson",email:"jwilson@demo.com",password:"demo",role:"director",is_active:true},{id:"u4",name:"Sarah Chen",email:"schen@demo.com",password:"demo",role:"chef",is_active:true},{id:"u5",name:"Robert Davis",email:"rdavis@demo.com",password:"demo",role:"chef",is_active:true}]
-const SS=SCHOOLS.map((s,i)=>({...s,chef_id:i<4?"u4":i<8?"u5":null,director_id:i<6?"u3":null,supervisor_id:i<10?"u2":null}))
-const SR=[
-  {id:"r1",date:TODAY,school_id:"s1",status:"green",issues:[],custom_issues:[],note:"Smooth service all around.",created_by:"u4",created_at:new Date().toISOString(),resolved:false,resolution_note:""},
-  {id:"r2",date:TODAY,school_id:"s5",status:"yellow",issues:["food_out"],custom_issues:[],note:"Ran short on pizza slices.",created_by:"u2",created_at:new Date(Date.now()-3e5).toISOString(),resolved:false,resolution_note:""},
-  {id:"r3",date:TODAY,school_id:"s2",status:"red",issues:["staffing","equip"],custom_issues:["Freezer alarm"],note:"Oven down, 2 staff out.",created_by:"u3",created_at:new Date(Date.now()-6e5).toISOString(),resolved:false,resolution_note:""},
-  {id:"r4",date:TODAY,school_id:"s9",status:"delayed",issues:["delivery"],custom_issues:[],note:"Delivery 45 min late.",created_by:"u4",created_at:new Date(Date.now()-9e5).toISOString(),resolved:true,resolution_note:"Delivery arrived, service started at 11:30am."},
-  {id:"r5",date:TODAY,school_id:"s3",status:"green",issues:[],custom_issues:[],note:null,created_by:"u5",created_at:new Date(Date.now()-1.2e6).toISOString(),resolved:false,resolution_note:""},
-  {id:"r6",date:TODAY,school_id:"s11",status:"partial",issues:["staffing"],custom_issues:[],note:"Served cold items only.",created_by:"u2",created_at:new Date(Date.now()-1.5e6).toISOString(),resolved:false,resolution_note:""}
-]
-const SC=[
-  {id:"c1",date:TODAY,school_id:"s2",staff_name:"Tom Bradley",staff_role:"Cook",type:"sick",note:"Flu symptoms",created_by:"u3",created_at:new Date(Date.now()-2e5).toISOString()},
-  {id:"c2",date:TODAY,school_id:"s5",staff_name:"Lisa Ray",staff_role:"Manager",type:"calloff",note:"",created_by:"u2",created_at:new Date(Date.now()-5e5).toISOString()},
-  {id:"c3",date:TODAY,school_id:"s9",staff_name:"Mike Jones",staff_role:"Cook",type:"ncns",note:"No response to calls",created_by:"u4",created_at:new Date(Date.now()-8e5).toISOString()}
-]
-const SD=[
-  {id:"d1",name:"Maria Garcia",position:"Operations Supervisor",role_type:"supervisor",school_ids:["s5"],phone:"(574) 555-0101",email:"mgarcia@sbcsc.edu",is_active:true},
-  {id:"d2",name:"James Wilson",position:"Director",role_type:"director",school_ids:["s1","s2"],phone:"(574) 555-0102",email:"jwilson@sbcsc.edu",is_active:true},
-  {id:"d3",name:"Sarah Chen",position:"Chef",role_type:"chef",school_ids:["s1"],phone:"(574) 555-0103",email:"schen@sbcsc.edu",is_active:true},
-  {id:"d4",name:"Robert Davis",position:"Chef",role_type:"chef",school_ids:["s5","s6"],phone:"(574) 555-0104",email:"rdavis@sbcsc.edu",is_active:true},
-  {id:"d5",name:"Lisa Thompson",position:"Manager",role_type:"manager",school_ids:["s2"],phone:"(574) 555-0105",email:"lthompson@sbcsc.edu",is_active:true},
-  {id:"d6",name:"Carlos Mendez",position:"Asst. Director",role_type:"asst_dir",school_ids:["s9"],phone:"(574) 555-0106",email:"cmendez@sbcsc.edu",is_active:true},
-  {id:"d7",name:"Angela Brooks",position:"CSA",role_type:"csa",school_ids:["s3"],phone:"(574) 555-0107",email:"abrooks@sbcsc.edu",is_active:true},
-  {id:"d8",name:"Derek Patel",position:"PPA",role_type:"ppa",school_ids:["s6"],phone:"(574) 555-0108",email:"dpatel@sbcsc.edu",is_active:true}
-]
+const SU=[] // real users come from Supabase app_users
+const SS=SCHOOLS.map(s=>({...s,chef_id:null,director_id:null,supervisor_id:null})) // real assignments come from Supabase school_assignments
+const SR=[] // real recaps come from Supabase
+const SC=[] // real calloffs come from Supabase
+const SD=[] // real directory comes from Supabase
 
 const C={primary:"#2563EB",surface:"#FFFFFF",border:"#E2E8F0",text:"#0F172A",textMuted:"#64748B",textLight:"#94A3B8",bg:"#F8FAFC"}
 const R={sm:8,md:12,lg:16,xl:20,full:9999}
@@ -376,8 +356,8 @@ export default function App(){
   const [mobile,setMobile]=useState(typeof window!=="undefined"&&window.innerWidth<768)
   const toast=useToast()
   useEffect(()=>{const fn=()=>setMobile(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn)},[])
-  // Reload if the calendar date changes while the tab stays open (kitchen displays left on overnight)
-  useEffect(()=>{const iv=setInterval(()=>{if(new Date().toISOString().slice(0,10)!==TODAY)window.location.reload()},60000);return()=>clearInterval(iv)},[])
+  // Reload overnight only when tab is hidden (never mid-click)
+  useEffect(()=>{const iv=setInterval(()=>{const d=new Date();const today=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");if(today!==TODAY&&document.hidden)window.location.reload()},60000);return()=>clearInterval(iv)},[]) 
 
   if(authLoading)return(
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748B",gap:12,background:"#F8FAFC"}}>
@@ -424,7 +404,7 @@ export default function App(){
     if(!allowed.includes(page)){
       const defaultPg=ROLE_DEFAULT[user?.role||"admin"]||"dashboard"
       setTimeout(()=>{setPage(defaultPg);sessionStorage.setItem('ops_page',defaultPg)},0)
-      if(user?.role==="kitchen_manager") return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go}/>
+      if(user?.role==="kitchen_manager") return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} directory={directory} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go}/>
       return <DashPage {...props}/>
     }
     if(page==="dashboard")return <DashPage {...props} events={events} supaUsers={supaUsers}/>
@@ -436,7 +416,7 @@ export default function App(){
     if(page==="events")return <EventsPage {...props}/>
     if(page==="stats")return <StatsPage {...props}/>
     if(page==="checklist")return <ChecklistPage {...props}/>
-    if(page==="kitchen")return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go} ctx={ctx}/>
+    if(page==="kitchen")return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} directory={directory} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go} ctx={ctx}/>
     if(page==="admin") return <AdminPage {...props}/>
     if(page==="auditlog") return <AuditPage {...props}/>
     return <DashPage {...props}/>
@@ -1613,15 +1593,26 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
         setSupaUsers(p=>p.map(u=>u.id===userId?{...u,...userForm}:u))
         toast.show("User updated!")
       }
-      // Sync school assignments - update schools state and save to supabase
+      // Sync school assignments
       const roleKey=userForm.role+"_id"
       if(["chef","director","supervisor"].includes(userForm.role)&&(userForm.school_ids||[]).length>0){
         setSchools(p=>p.map(s=>(userForm.school_ids||[]).includes(s.id)?{...s,[roleKey]:userId}:s))
-        // Save each assignment to supabase
         for(const sid of userForm.school_ids){
           await supabase.from("school_assignments").upsert({school_id:sid,[roleKey]:userId},{onConflict:"school_id"})
         }
       }
+      // Sync-through to Staff Directory — same id means no duplicates across sources
+      const posMap={admin:"Administrator",director:"Director",supervisor:"Operations Supervisor",chef:"Chef",kitchen_manager:"Kitchen Manager",csa:"CSA",ppa:"PPA"}
+      await supabase.from("directory").upsert({
+        id:userId,
+        name:userForm.name,
+        email:userForm.email||"",
+        phone:userForm.phone||"",
+        position:posMap[userForm.role]||userForm.role,
+        role_type:userForm.role,
+        school_ids:userForm.school_ids||[],
+        is_active:userModal==="add"?true:(userForm.is_active!==false)
+      },{onConflict:"id"})
       loadUsers()
       setUserModal(null)
     }catch(e){
@@ -1714,7 +1705,7 @@ function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
               <td style={{padding:"10px 14px"}}><Pill bg={u.is_active?"#F0FDF4":"#F1F5F9"} tx={u.is_active?"#15803D":C.textMuted}>{u.is_active?"Active":"Inactive"}</Pill></td>
               <td style={{padding:"10px 14px"}}><div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{setUserForm({...u,password:""});setUserErr("");setUserModal(u)}} style={{background:"#EFF6FF",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#1565C0",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Edit</button>
-                <button onClick={async()=>{if(!window.confirm("Deactivate "+u.name+"? They will no longer be able to use Ops Daily. An admin can reactivate them later by editing the user."))return;const{error}=await supabase.from("app_users").update({is_active:false}).eq("id",u.id);if(error){toast.show("Failed: "+error.message,"error");return}setSupaUsers(p=>p.map(x=>x.id===u.id?{...x,is_active:false}:x));toast.show(u.name+" deactivated.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#DC2626",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Deactivate</button>
+                <button onClick={async()=>{if(!window.confirm("Deactivate "+u.name+"? They will no longer be able to use Ops Daily. An admin can reactivate them later by editing the user."))return;const{error}=await supabase.from("app_users").update({is_active:false}).eq("id",u.id);if(error){toast.show("Failed: "+error.message,"error");return}await supabase.from("directory").update({is_active:false}).eq("id",u.id);setSupaUsers(p=>p.map(x=>x.id===u.id?{...x,is_active:false}:x));toast.show(u.name+" deactivated.")}} style={{background:"#FEF2F2",border:"none",borderRadius:R.md,padding:"4px 10px",cursor:"pointer",color:"#DC2626",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>Deactivate</button>
               </div></td>
             </tr>)}</tbody>
           </table>
@@ -2287,7 +2278,7 @@ const ANN_TYPES={
   urgent:{label:"Urgent",color:"#B45309",bg:"#FFFBEB"},
 }
 
-function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=false,events=[],setEvents}){
+function KitchenPage({user,schools,supaUsers,directory=[],isAdmin,toast,kmAnnouncementsOnly=false,events=[],setEvents}){
   const isKM=user.role==="kitchen_manager"
   const canManageAll=["admin","director","supervisor","chef"].includes(user.role)
   // Use refs so realtime callbacks always have current values
@@ -2370,7 +2361,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
     const uid3='kitchen-msgs-badge-rt'
     const rt3=supabase.channel(uid3).on('postgres_changes',{event:'*',schema:'public',table:'kitchen_messages'},p=>{
       // Update unread badge in realtime
-      if(p.eventType==='INSERT'||p.eventType==='UPDATE') loadUnread()
+      loadUnread()
     }).subscribe()
     const rt2=supabase.channel(uid2).on('postgres_changes',{event:'*',schema:'public',table:'announcements'},p=>{
       if(p.eventType==='INSERT'){
@@ -2490,7 +2481,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 
   return(
     <div style={{padding:"24px 20px"}}>
-      {detailId&&<IssueDetailPage issueId={detailId} issues={issues} schools={schools} supaUsers={supaUsers} user={user} toast={toast} onClose={()=>setDetailId(null)} onUpdateStatus={updateStatus} onPatchIssue={(id,patch)=>setIssues(p=>p.map(x=>x.id===id?{...x,...patch}:x))} canManageAll={canManageAll}/>}
+      {detailId&&<IssueDetailPage issueId={detailId} issues={issues} schools={schools} supaUsers={supaUsers} directory={directory} user={user} toast={toast} onClose={()=>setDetailId(null)} onUpdateStatus={updateStatus} onPatchIssue={(id,patch)=>setIssues(p=>p.map(x=>x.id===id?{...x,...patch}:x))} canManageAll={canManageAll}/>}
       <PageHeader
         title="Kitchen Hub"
         subtitle={isKM?(mySchool?.name||"Your Kitchen"):"District Kitchen Issues & Communications"}
@@ -2754,7 +2745,7 @@ function KitchenPage({user,schools,supaUsers,isAdmin,toast,kmAnnouncementsOnly=f
 const UPDATE_KIND_ICONS={note:"💬",status:"🔄",assign:"👤",edit:"✏️",priority:"🏷️",reopen:"↩️"}
 const PRI_META={urgent:{bg:"#FEF2F2",tx:"#DC2626",bd:"#FECACA",label:"🔴 Urgent"},normal:{bg:"#EFF6FF",tx:"#2563EB",bd:"#BFDBFE",label:"Normal"},low:{bg:"#F0FDF4",tx:"#16A34A",bd:"#BBF7D0",label:"Low"}}
 
-function IssueDetailPage({issueId,issues,schools,supaUsers,user,toast,onClose,onUpdateStatus,onPatchIssue,canManageAll}){
+function IssueDetailPage({issueId,issues,schools,supaUsers,directory=[],user,toast,onClose,onUpdateStatus,onPatchIssue,canManageAll}){
   const issue=issues.find(i=>i.id===issueId)
   const [updates,setUpdates]=useState([])
   const [updLoading,setUpdLoading]=useState(true)
@@ -2793,7 +2784,12 @@ function IssueDetailPage({issueId,issues,schools,supaUsers,user,toast,onClose,on
   const isLive=!isResolved
   const watchers=Array.isArray(issue.watchers)?issue.watchers:[]
   const amWatching=watchers.some(w=>w.id===user.id)
-  const adminTeam=supaUsers.filter(u=>["admin","director","supervisor","chef"].includes(u.role)&&u.is_active!==false)
+  // Merge staff from app_users + directory so assign dropdown shows everyone
+  const adminRoles=["admin","director","supervisor","chef"]
+  const dirMapped=directory.filter(d=>adminRoles.some(r=>(d.position||"").toLowerCase().includes(r))||adminRoles.includes(d.role_type)).map(d=>({id:d.id,name:d.name,email:d.email,phone:d.phone,role:d.role_type||d.position||"staff",_src:"dir"}))
+  const suMapped=supaUsers.filter(u=>adminRoles.includes(u.role)&&u.is_active!==false).map(u=>({...u,_src:"app"}))
+  const seen=new Set()
+  const adminTeam=[...suMapped,...dirMapped].filter(u=>{if(!u.id||seen.has(u.id))return false;seen.add(u.id);return true}).sort((a,b)=>(a.name||"").localeCompare(b.name||""))
   const assignedUser=supaUsers.find(u=>u.id===issue.assigned_to)
 
   const logUpdate=async(kind,body,isInternal=false)=>{
