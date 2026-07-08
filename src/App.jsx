@@ -796,31 +796,41 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
 
       {/* HEALTH + STATS ROW */}
       <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"auto 1fr",gap:12,marginBottom:14,alignItems:"stretch"}}>
-        {/* Health Ring Card */}
+        {/* Health Ring Card — text rendered in SVG for pixel-perfect sharpness */}
         <div style={{background:"#fff",borderRadius:R.xl,border:"1px solid #EAECF0",padding:"18px 22px",display:"flex",alignItems:"center",gap:20,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-          <div style={{position:"relative",width:80,height:80,flexShrink:0}}>
-            <svg width="80" height="80" viewBox="0 0 80 80" style={{transform:"rotate(-90deg)"}}>
-              <circle cx="40" cy="40" r="29" fill="none" stroke="#F3F4F6" strokeWidth="7"/>
-              <circle cx="40" cy="40" r="29" fill="none" stroke={efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444"} strokeWidth="7"
-                strokeDasharray={ringCirc} strokeDashoffset={ringOffset} strokeLinecap="round"/>
-            </svg>
-            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-              <div style={{fontSize:17,fontWeight:900,color:C.text,lineHeight:1}}>{efficiency}%</div>
-              <div style={{fontSize:8,fontWeight:700,color:efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444",textTransform:"uppercase",letterSpacing:".04em",marginTop:2}}>
-                {efficiency>=90?"Excellent":efficiency>=70?"Good":"Needs Work"}
-              </div>
-            </div>
-          </div>
+          <svg width="90" height="90" viewBox="0 0 90 90" style={{flexShrink:0}}>
+            {/* Track */}
+            <circle cx="45" cy="45" r="33" fill="none" stroke="#F3F4F6" strokeWidth="7"/>
+            {/* Progress */}
+            <circle cx="45" cy="45" r="33" fill="none"
+              stroke={efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444"}
+              strokeWidth="7"
+              strokeDasharray="207.3"
+              strokeDashoffset={207.3-(207.3*(efficiency/100))}
+              strokeLinecap="round"
+              transform="rotate(-90 45 45)"/>
+            {/* Percentage text — rendered in SVG = always sharp */}
+            <text x="45" y="41" textAnchor="middle" dominantBaseline="middle"
+              style={{fontSize:16,fontWeight:900,fill:"#0D1117",fontFamily:"inherit"}}>
+              {efficiency}%
+            </text>
+            <text x="45" y="56" textAnchor="middle" dominantBaseline="middle"
+              style={{fontSize:7,fontWeight:700,fill:efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444",textTransform:"uppercase",letterSpacing:"1px",fontFamily:"inherit"}}>
+              {efficiency>=90?"EXCELLENT":efficiency>=70?"GOOD":"NEEDS WORK"}
+            </text>
+          </svg>
           <div>
             <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:10}}>Operations Health</div>
-            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {[
-                {icon:"🏫",label:"Schools",val:totalSchools,color:"#2563EB"},
-                {icon:"📊",label:"Efficiency",val:efficiency+"%",color:efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444"},
-                {icon:"⚠️",label:"Issues",val:issueShown,color:issueShown>0?"#EF4444":"#16A34A"},
+                {color:"#2563EB",label:"Schools",val:totalSchools},
+                {color:efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444",label:"Efficiency",val:efficiency+"%"},
+                {color:issueShown>0?"#EF4444":"#16A34A",label:"Issues",val:issueShown},
               ].map(s=>(
                 <div key={s.label} style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:13}}>{s.icon}</span>
+                  <svg width="10" height="10" viewBox="0 0 10 10" style={{flexShrink:0}}>
+                    <circle cx="5" cy="5" r="4" fill={s.color}/>
+                  </svg>
                   <span style={{fontSize:12,color:C.textMuted,width:64}}>{s.label}</span>
                   <span style={{fontSize:13,fontWeight:800,color:s.color}}>{s.val}</span>
                 </div>
