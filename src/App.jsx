@@ -764,68 +764,132 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
   const reset=()=>{setFrom(TODAY);setTo(TODAY);setSchool("");setStatus("")}
   const isMultiDay=dateFrom!==dateTo
 
+  // Health ring calculation
+  const totalSchools=schools.length||1
+  const goodRecaps=recaps.filter(r=>r.date===TODAY&&r.status==="green"&&!r.resolved).length
+  const efficiency=recaps.filter(r=>r.date===TODAY).length===0?100:Math.round((goodShown/Math.max(totalShown,1))*100)
+  const ringCirc=182.2
+  const ringOffset=ringCirc-(ringCirc*(efficiency/100))
+
   return(
-    <div style={{padding:"24px 20px"}}>
-      <PageHeader title="Dashboard" subtitle={isMultiDay?fd(dateFrom)+" to "+fd(dateTo):fd(dateFrom)+" - "+totalShown+" recap"+(totalShown!==1?"s":"")} action={<div style={{display:"flex",gap:8}}><AlertsBtn userId={user?.id}/><Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn></div>}/>
+    <div style={{padding:"24px 20px 32px"}}>
+
+      {/* GREETING + ACTION */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <div>
+          <h1 style={{fontSize:mobile?20:24,fontWeight:900,color:C.text,letterSpacing:"-.4px",margin:0}}>
+            {(()=>{const h=new Date().getHours();return h<12?"Good morning":h<17?"Good afternoon":"Good evening"})()}, {user?.name?.split(" ")[0]||"there"} 👋
+          </h1>
+          <div style={{fontSize:13,color:C.textMuted,marginTop:3}}>{fd(TODAY)} · South Bend Community School Corporation</div>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:"#16A34A",display:"inline-block",animation:"livePulse 2s ease infinite"}}/>
+            <span style={{fontSize:12,color:"#16A34A",fontWeight:600}}>Live · Updated just now</span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,flexShrink:0}}>
+          <AlertsBtn userId={user?.id}/>
+          <Btn onClick={()=>go("submit")}><PlusCircle size={14}/> Submit Recap</Btn>
+        </div>
+      </div>
+
       <AnnouncementBanner announcements={announcements} userRole={user?.role} userId={user?.id}/>
 
-      {/* Quick Access Cards - front and center */}
-      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(3,1fr)",gap:12,marginBottom:20}}>
-        {/* Announcements Card */}
-        <div onClick={()=>{sessionStorage.setItem("kitchen_tab","announcements");go("kitchen")}} style={{background:"linear-gradient(135deg,#1D4ED8,#2563EB)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(37,99,235,.25)",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+      {/* HEALTH + STATS ROW */}
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"auto 1fr",gap:12,marginBottom:14,alignItems:"stretch"}}>
+        {/* Health Ring Card */}
+        <div style={{background:"#fff",borderRadius:R.xl,border:"1px solid #EAECF0",padding:"18px 22px",display:"flex",alignItems:"center",gap:20,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+          <div style={{position:"relative",width:80,height:80,flexShrink:0}}>
+            <svg width="80" height="80" viewBox="0 0 80 80" style={{transform:"rotate(-90deg)"}}>
+              <circle cx="40" cy="40" r="29" fill="none" stroke="#F3F4F6" strokeWidth="7"/>
+              <circle cx="40" cy="40" r="29" fill="none" stroke={efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444"} strokeWidth="7"
+                strokeDasharray={ringCirc} strokeDashoffset={ringOffset} strokeLinecap="round"/>
+            </svg>
+            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+              <div style={{fontSize:17,fontWeight:900,color:C.text,lineHeight:1}}>{efficiency}%</div>
+              <div style={{fontSize:8,fontWeight:700,color:efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444",textTransform:"uppercase",letterSpacing:".04em",marginTop:2}}>
+                {efficiency>=90?"Excellent":efficiency>=70?"Good":"Needs Work"}
+              </div>
+            </div>
+          </div>
+          <div>
+            <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:10}}>Operations Health</div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {[
+                {icon:"🏫",label:"Schools",val:totalSchools,color:"#2563EB"},
+                {icon:"📊",label:"Efficiency",val:efficiency+"%",color:efficiency>=90?"#16A34A":efficiency>=70?"#F59E0B":"#EF4444"},
+                {icon:"⚠️",label:"Issues",val:issueShown,color:issueShown>0?"#EF4444":"#16A34A"},
+              ].map(s=>(
+                <div key={s.label} style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:13}}>{s.icon}</span>
+                  <span style={{fontSize:12,color:C.textMuted,width:64}}>{s.label}</span>
+                  <span style={{fontSize:13,fontWeight:800,color:s.color}}>{s.val}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Stat Cards */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+          {[
+            {label:"Total Recaps",val:totalShown,color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},
+            {label:"All Good",val:goodShown,color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},
+            {label:"Need Attention",val:issueShown,color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"},
+          ].map(c=>(
+            <div key={c.label} style={{background:c.bg,borderRadius:R.xl,padding:"16px 18px",border:"1px solid "+c.bd,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+              <div style={{fontSize:32,fontWeight:900,color:c.color,lineHeight:1}}>{c.val}</div>
+              <div style={{fontSize:12,fontWeight:600,color:C.textMuted,marginTop:5}}>{c.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* GRADIENT CARDS — Announcements, Calendar, Messages */}
+      <div style={{display:"grid",gridTemplateColumns:mobile?"1fr":"repeat(3,1fr)",gap:12,marginBottom:14}}>
+        {/* Announcements */}
+        <div onClick={()=>{sessionStorage.setItem("kitchen_tab","announcements");go("kitchen")}} style={{background:"linear-gradient(135deg,#1E40AF,#2563EB)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(37,99,235,.22)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.07)"}}/>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📢</div>
+            <div style={{width:32,height:32,borderRadius:9,background:"rgba(255,255,255,.18)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>📢</div>
             <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Announcements</span>
-            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{announcements.filter(a=>canSeeAnn(a,user?.role)).length}</span>}
+            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.22)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{announcements.filter(a=>canSeeAnn(a,user?.role)).length}</span>}
           </div>
-          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
-            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0
-              ?announcements.filter(a=>canSeeAnn(a,user?.role))[0].title
-              :"No active announcements"}
+          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+            {announcements.filter(a=>canSeeAnn(a,user?.role)).length>0?announcements.filter(a=>canSeeAnn(a,user?.role))[0].title:"No active announcements — you're all caught up."}
           </div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view all →</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.45)",marginTop:6}}>Tap to view all →</div>
         </div>
 
-        {/* Calendar Card */}
-        <div onClick={()=>{if(user?.role==="kitchen_manager"){sessionStorage.setItem("kitchen_tab","calendar");go("kitchen")}else go("events")}} style={{background:"linear-gradient(135deg,#0D9488,#0F766E)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(13,148,136,.22)",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+        {/* Calendar */}
+        <div onClick={()=>{if(user?.role==="kitchen_manager"){sessionStorage.setItem("kitchen_tab","calendar");go("kitchen")}else go("events")}} style={{background:"linear-gradient(135deg,#0F766E,#0D9488)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(13,148,136,.2)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.07)"}}/>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📅</div>
+            <div style={{width:32,height:32,borderRadius:9,background:"rgba(255,255,255,.18)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>📅</div>
             <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Calendar</span>
-            {events.filter(e=>e.date>=TODAY).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY).length}</span>}
+            {events.filter(e=>e.date>=TODAY).length>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.22)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{events.filter(e=>e.date>=TODAY).length}</span>}
           </div>
-          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
-            {(()=>{const up=events.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date));return up[0]?fd(up[0].date)+" — "+up[0].title:"No upcoming events"})()}
+          <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+            {(()=>{const up=events.filter(e=>e.date>=TODAY).sort((a,b)=>a.date.localeCompare(b.date));return up[0]?fd(up[0].date)+" — "+up[0].title:"No upcoming events scheduled."})()}
           </div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to view →</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.45)",marginTop:6}}>Tap to view →</div>
         </div>
 
-        {/* Messages Card */}
-        <div onClick={()=>{sessionStorage.setItem("kitchen_tab","inbox");go("kitchen")}} style={{background:"linear-gradient(135deg,#7C3AED,#6D28D9)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(124,58,237,.22)",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
+        {/* Messages */}
+        <div onClick={()=>{sessionStorage.setItem("kitchen_tab","inbox");go("kitchen")}} style={{background:"linear-gradient(135deg,#6D28D9,#7C3AED)",borderRadius:R.xl,padding:"18px 20px",cursor:"pointer",boxShadow:"0 4px 16px rgba(109,40,217,.2)",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:-20,right:-20,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,.07)"}}/>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>💬</div>
+            <div style={{width:32,height:32,borderRadius:9,background:"rgba(255,255,255,.18)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>💬</div>
             <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Messages</span>
-            {unreadMsgs>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.25)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{unreadMsgs}</span>}
+            {unreadMsgs>0&&<span style={{marginLeft:"auto",background:"rgba(255,255,255,.22)",borderRadius:R.full,padding:"2px 8px",fontSize:11,fontWeight:700,color:"#fff"}}>{unreadMsgs}</span>}
           </div>
           <div style={{fontSize:12,color:"rgba(255,255,255,.75)",lineHeight:1.5}}>
-            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":""):"All caught up"}
+            {unreadMsgs>0?unreadMsgs+" unread message"+(unreadMsgs!==1?"s":"")+" from your team":"All caught up — no unread messages."}
           </div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,.55)",marginTop:6}}>Tap to open →</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,.45)",marginTop:6}}>Tap to open →</div>
         </div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
-        {[{label:"Total Recaps",val:totalShown,color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},{label:"All Good",val:goodShown,color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{label:"Need Attention",val:issueShown,color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA"}].map(c=>(
-          <div key={c.label} style={{background:c.bg,borderRadius:R.lg,padding:"16px 18px",border:"1px solid "+c.bd}}>
-            <div style={{fontSize:28,fontWeight:900,color:c.color,lineHeight:1}}>{c.val}</div>
-            <div style={{fontSize:12,fontWeight:600,color:C.textMuted,marginTop:4}}>{c.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Kitchen Hub Issues — admin team only */}
+      {/* KITCHEN HUB ISSUES — admin team only */}
       {canManageAllDash&&(()=>{
         const openIssues=dashIssues.filter(i=>i.status!=="resolved")
         const urgentCount=openIssues.filter(i=>i.priority==="urgent").length
@@ -833,37 +897,29 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
         const priMeta={"urgent":{color:"#DC2626",bg:"#FEF2F2",bd:"#FECACA",label:"Urgent",accent:"#DC2626"},"normal":{color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE",label:"Normal",accent:"#2563EB"},"low":{color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0",label:"Low",accent:"#16A34A"}}
         const stMeta={"open":{color:"#DC2626",bg:"#FEF2F2",label:"Open"},"acknowledged":{color:"#D97706",bg:"#FFFBEB",label:"Acknowledged"},"in_progress":{color:"#2563EB",bg:"#EFF6FF",label:"In Progress"}}
         return(
-          <Box style={{marginBottom:20,padding:0,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.06),0 4px 16px -4px rgba(0,0,0,.08)"}}>
-            {/* Header */}
-            <div style={{padding:"16px 20px",background:urgentCount>0?"linear-gradient(135deg,#FFF5F5,#FFF)":"#fff",borderBottom:"1px solid #F1F5F9"}}>
+          <Box style={{marginBottom:14,padding:0,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.06),0 4px 16px -4px rgba(0,0,0,.08)"}}>
+            <div style={{padding:"14px 20px",background:urgentCount>0?"linear-gradient(135deg,#FFF5F5,#FFF)":"#fff",borderBottom:"1px solid #F1F5F9"}}>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
-                  <div style={{width:36,height:36,borderRadius:10,background:urgentCount>0?"#FEF2F2":"#EFF6FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
-                    {urgentCount>0?"🚨":"📋"}
-                  </div>
+                  <div style={{width:34,height:34,borderRadius:9,background:urgentCount>0?"#FEF2F2":"#EFF6FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{urgentCount>0?"🚨":"📋"}</div>
                   <div style={{minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      <span style={{fontWeight:800,fontSize:15,color:C.text}}>Kitchen Hub Issues</span>
+                      <span style={{fontWeight:800,fontSize:14,color:C.text}}>Kitchen Hub Issues</span>
                       {openIssues.length>0&&<span style={{background:urgentCount>0?"#FEF2F2":"#F1F5F9",color:urgentCount>0?"#DC2626":C.textMuted,border:"1px solid "+(urgentCount>0?"#FECACA":"#E2E8F0"),padding:"1px 8px",borderRadius:R.full,fontSize:11,fontWeight:800}}>{openIssues.length} open</span>}
                     </div>
                     <div style={{fontSize:12,color:C.textMuted,marginTop:1}}>
-                      {openIssues.length===0?"All schools running clean"
-                        :urgentCount>0?urgentCount+" urgent issue"+(urgentCount!==1?"s":"")+" need"+(urgentCount===1?"s":"")+" attention"
-                        :"No urgent issues — "+openIssues.length+" being tracked"}
+                      {openIssues.length===0?"All schools running clean":urgentCount>0?urgentCount+" urgent issue"+(urgentCount!==1?"s":"")+" need attention":"No urgent issues — "+openIssues.length+" being tracked"}
                     </div>
                   </div>
                 </div>
-                <button onClick={()=>go("kitchen")} style={{display:"flex",alignItems:"center",gap:6,background:C.primary,color:"#fff",border:"none",borderRadius:R.md,padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
-                  Kitchen Hub →
-                </button>
+                <button onClick={()=>go("kitchen")} style={{display:"flex",alignItems:"center",gap:6,background:C.primary,color:"#fff",border:"none",borderRadius:R.md,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>Kitchen Hub →</button>
               </div>
             </div>
-
             {openIssues.length===0?(
-              <div style={{padding:"36px 20px",textAlign:"center"}}>
-                <div style={{fontSize:32,marginBottom:8}}>✅</div>
-                <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>No open issues</div>
-                <div style={{fontSize:13,color:C.textMuted}}>All schools are running clean today.</div>
+              <div style={{padding:"28px 20px",textAlign:"center"}}>
+                <div style={{fontSize:28,marginBottom:6}}>✅</div>
+                <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3}}>No open issues</div>
+                <div style={{fontSize:12,color:C.textMuted}}>All schools are running clean today.</div>
               </div>
             ):(
               <div>
@@ -873,36 +929,25 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
                   const s=stMeta[issue.status]||stMeta.open
                   const isUrgent=issue.priority==="urgent"
                   return(
-                    <div key={issue.id} onClick={()=>go("kitchen")} 
-                      style={{display:"flex",alignItems:"center",gap:14,padding:"13px 20px",borderBottom:idx<arr.length-1?"1px solid #F8FAFC":"none",cursor:"pointer",borderLeft:"3px solid "+p.accent,background:isUrgent?"#FFFAFA":"#fff",transition:"background .12s"}}
+                    <div key={issue.id} onClick={()=>go("kitchen")}
+                      style={{display:"flex",alignItems:"center",gap:12,padding:"11px 20px",borderBottom:idx<arr.length-1?"1px solid #F8FAFC":"none",cursor:"pointer",borderLeft:"3px solid "+p.accent,background:isUrgent?"#FFFAFA":"#fff"}}
                       onMouseEnter={e=>e.currentTarget.style.background=isUrgent?"#FEF2F2":"#F8FAFC"}
                       onMouseLeave={e=>e.currentTarget.style.background=isUrgent?"#FFFAFA":"#fff"}>
-                      {/* Icon */}
-                      <div style={{width:36,height:36,borderRadius:9,background:p.bg,border:"1px solid "+p.bd,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
-                        {kitIcons[issue.type]||"📋"}
-                      </div>
-                      {/* Content */}
+                      <div style={{width:32,height:32,borderRadius:8,background:p.bg,border:"1px solid "+p.bd,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{kitIcons[issue.type]||"📋"}</div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:700,fontSize:13.5,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{issue.title}</div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                          <span style={{fontSize:11,color:C.textMuted,fontWeight:600}}>📍 {sch?.name||"Unknown school"}</span>
-                          <span style={{color:C.border}}>·</span>
-                          <span style={{fontSize:11,color:C.textMuted}}>by {issue.created_by_name||"--"}</span>
-                          <span style={{color:C.border}}>·</span>
-                          <span style={{fontSize:11,color:C.textLight}}>{fdt(issue.created_at)}</span>
-                        </div>
+                        <div style={{fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{issue.title}</div>
+                        <div style={{fontSize:11,color:C.textMuted}}>📍 {sch?.name||"--"} · {issue.created_by_name||"--"} · {fdt(issue.created_at)}</div>
                       </div>
-                      {/* Badges */}
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
-                        <span style={{background:p.bg,color:p.color,border:"1px solid "+p.bd,padding:"2px 9px",borderRadius:R.full,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{p.label}</span>
-                        <span style={{background:s.bg,color:s.color,padding:"2px 9px",borderRadius:R.full,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{s.label}</span>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                        <span style={{background:p.bg,color:p.color,border:"1px solid "+p.bd,padding:"2px 8px",borderRadius:R.full,fontSize:10,fontWeight:700}}>{p.label}</span>
+                        <span style={{background:s.bg,color:s.color,padding:"2px 8px",borderRadius:R.full,fontSize:10,fontWeight:600}}>{s.label}</span>
                       </div>
                     </div>
                   )
                 })}
                 {openIssues.length>6&&(
-                  <div onClick={()=>go("kitchen")} style={{padding:"12px 20px",textAlign:"center",fontSize:13,color:C.primary,fontWeight:700,cursor:"pointer",borderTop:"1px solid #F1F5F9",background:"#FAFAFA",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                    <span>+{openIssues.length-6} more open issues</span><span>→</span>
+                  <div onClick={()=>go("kitchen")} style={{padding:"10px 20px",textAlign:"center",fontSize:12,color:C.primary,fontWeight:700,cursor:"pointer",borderTop:"1px solid #F1F5F9",background:"#FAFAFA"}}>
+                    +{openIssues.length-6} more open issues →
                   </div>
                 )}
               </div>
@@ -911,34 +956,27 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
         )
       })()}
 
-      <Box style={{marginBottom:16,padding:"14px 18px"}}>
-        <div style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"flex-end"}}>
-          <div>
-            <L>From Date</L>
-            <input type="date" value={dateFrom} onChange={e=>{setFrom(e.target.value);if(e.target.value>dateTo)setTo(e.target.value)}} style={{...inp,width:"100%",maxWidth:180}}/>
-          </div>
-          <div>
-            <L>To Date</L>
-            <input type="date" value={dateTo} onChange={e=>{setTo(e.target.value);if(e.target.value<dateFrom)setFrom(e.target.value)}} style={{...inp,width:"100%",maxWidth:180}}/>
-          </div>
-          <div style={{flex:"1 1 160px",maxWidth:260}}>
-            <L>School</L>
-            <SG schools={schools} value={fSchool} onChange={e=>setSchool(e.target.value)} all="All Schools"/>
-          </div>
+      {/* FILTER BAR */}
+      <Box style={{marginBottom:14,padding:"14px 18px"}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:10,alignItems:"flex-end"}}>
+          <div><L>From Date</L><input type="date" value={dateFrom} onChange={e=>{setFrom(e.target.value);if(e.target.value>dateTo)setTo(e.target.value)}} style={{...inp,width:"100%",maxWidth:160}}/></div>
+          <div><L>To Date</L><input type="date" value={dateTo} onChange={e=>{setTo(e.target.value);if(e.target.value<dateFrom)setFrom(e.target.value)}} style={{...inp,width:"100%",maxWidth:160}}/></div>
+          <div style={{flex:"1 1 140px",maxWidth:240}}><L>School</L><SG schools={schools} value={fSchool} onChange={e=>setSchool(e.target.value)} all="All Schools"/></div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingBottom:2}}>
-            <button onClick={()=>{setFrom(TODAY);setTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Today</button>
-            <button onClick={()=>{const d=new Date();d.setDate(d.getDate()-6);setFrom(d.toISOString().slice(0,10));setTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Last 7 Days</button>
-            <button onClick={()=>{const d=new Date();d.setDate(1);setFrom(d.toISOString().slice(0,10));setTo(TODAY)}} style={{padding:"5px 10px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>This Month</button>
+            <button onClick={()=>{setFrom(TODAY);setTo(TODAY)}} style={{padding:"6px 11px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Today</button>
+            <button onClick={()=>{const d=new Date();d.setDate(d.getDate()-6);setFrom(d.toISOString().slice(0,10));setTo(TODAY)}} style={{padding:"6px 11px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Last 7 Days</button>
+            <button onClick={()=>{const d=new Date();d.setDate(1);setFrom(d.toISOString().slice(0,10));setTo(TODAY)}} style={{padding:"6px 11px",borderRadius:R.md,border:"1px solid #E2E8F0",background:"#fff",color:C.textMuted,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>This Month</button>
             <Btn onClick={reset} variant="outline" sm><RefreshCw size={11}/> Reset</Btn>
           </div>
         </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:12}}>
-          {STATS.map(s=><button key={s.id} onClick={()=>setFStatus(fStatus===s.id?"":s.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:R.full,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid "+(fStatus===s.id?s.c:C.border),background:fStatus===s.id?s.c:"#fff",color:fStatus===s.id?"#fff":C.textMuted,fontFamily:"inherit"}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+          {STATS.map(s=><button key={s.id} onClick={()=>setFStatus(fStatus===s.id?"":s.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:R.full,fontSize:11,fontWeight:600,cursor:"pointer",border:"1.5px solid "+(fStatus===s.id?s.c:C.border),background:fStatus===s.id?s.c:"#fff",color:fStatus===s.id?"#fff":C.textMuted,fontFamily:"inherit"}}>
             {s.label}<span style={{background:fStatus===s.id?"rgba(255,255,255,.25)":"rgba(0,0,0,.06)",borderRadius:R.full,padding:"0 5px",fontSize:10,fontWeight:700}}>{counts[s.id]||0}</span>
           </button>)}
         </div>
       </Box>
 
+      {/* RECAPS TABLE / CARDS */}
       {mobile?(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filtered.length===0?<Box style={{textAlign:"center",padding:"40px 20px"}}><div style={{fontWeight:600,color:C.textMuted}}>No recaps found</div></Box>
@@ -948,7 +986,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
             const ai=[...(r.issues||[]).map(id=>ISS.find(p=>p.id===id)?.label).filter(Boolean),...(r.custom_issues||[])]
             const hn=!!r.note,no=on.has(r.id)
             const needsResolve=r.status!=="green"&&!r.resolved
-                        return [
+            return [
               <div key={r.id}>
                 {resolveId===r.id&&<ResolveModal recap={r} onClose={()=>setResolveId(null)} onResolve={(note)=>{handleResolve(r.id,note);setResolveId(null)}}/>}
                 <Box style={{padding:14,borderLeft:"4px solid "+(r.resolved?"#16A34A":st.c)}}>
@@ -994,7 +1032,7 @@ function DashPage({recaps,setRecaps,schools,users,go,sById,uById,toast,user,isAd
                   const ai=[...(r.issues||[]).map(id=>ISS.find(p=>p.id===id)?.label).filter(Boolean),...(r.custom_issues||[])]
                   const hn=!!r.note,no=on.has(r.id)
                   const needsResolve=r.status!=="green"&&!r.resolved
-                                    return [
+                  return [
                     <tr key={r.id} style={{borderBottom:"1px solid #F1F5F9",background:r.resolved?"#FAFFFE":"#fff"}}>
                       {resolveId===r.id&&<ResolveModal recap={r} onClose={()=>setResolveId(null)} onResolve={(note)=>{handleResolve(r.id,note);setResolveId(null)}}/>}
                       <td style={{padding:"11px 14px",fontWeight:700,whiteSpace:"nowrap",maxWidth:200}}>
