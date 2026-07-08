@@ -111,8 +111,7 @@ async function requestPushPermission(userId){
     return true
   }catch(e){
     console.error('Push subscribe error:',e)
-    console.warn('Push setup failed (non-critical):',e.message)
-    // In-app alerts still work — push is a nice-to-have
+    alert('Push setup failed: '+e.message+'\n\nIn-app alerts will still work.')
     return false
   }
 }
@@ -422,7 +421,7 @@ export default function App(){
     if(page==="stats")return <StatsPage {...props}/>
     if(page==="checklist")return <ChecklistPage {...props}/>
     if(page==="kitchen")return <KitchenPage user={user} schools={schools} supaUsers={supaUsers} directory={directory} isAdmin={perms.admin} toast={toast} events={events} setEvents={setEvents} go={go} ctx={ctx}/>
-    if(page==="admin") return <AdminPage {...props} directory={directory} setDirectory={setDirectory}/>
+    if(page==="admin") return <AdminPage {...props}/>
     if(page==="auditlog") return <AuditPage {...props}/>
     return <DashPage {...props}/>
   }
@@ -1700,7 +1699,7 @@ function DirPage({directory,setDirectory,schools,isAdmin,toast}){
   )
 }
 
-function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,directory=[],setDirectory,toast}){
+function AdminPage({schools,setSchools,users,supaUsers,setSupaUsers,toast}){
   const [tab,setTab]=useState("users")
   const [es,setEs]=useState(null)
   const [assignSearch,setAssignSearch]=useState("")
